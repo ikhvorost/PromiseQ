@@ -687,7 +687,7 @@ final class PromiseLiteTests: XCTestCase {
 					}
 					
 					if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-						reject("HTTP Error: \(http.statusCode)")
+						reject("HTTP \(http.statusCode) - \(http.allHeaderFields.description)")
 						return
 					}
 					
