@@ -680,7 +680,14 @@ final class PromiseLiteTests: XCTestCase {
 					return
 				}
 				
-				URLSession.shared.dataTask(with: url) { data, response, error in
+				var request = URLRequest(url: url)
+				
+				// GitHub auth
+				if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] {
+					request.addValue("token \(token)", forHTTPHeaderField: "Authorization")
+				}
+				
+				URLSession.shared.dataTask(with: request) { data, response, error in
 					guard error == nil else {
 						reject(error!)
 						return
