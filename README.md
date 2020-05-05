@@ -1,8 +1,8 @@
 # PromiseQ
 
-[![Language: Swift](https://img.shields.io/badge/language-swift-f48041.svg?style=flat)](https://developer.apple.com/swift)
-![Platform: iOS 8+/macOS10.11](https://img.shields.io/badge/platform-iOS%20|%20macOS%20|%20tvOS%20|%20watchOS%20|%20Linux-blue.svg?style=flat)
-[![SPM compatible](https://img.shields.io/badge/SPM-compatible-4BC51D.svg?style=flat)](https://swift.org/package-manager/)
+[![Language: Swift5](https://img.shields.io/badge/language-swift5-f48041.svg?style=flat)](https://developer.apple.com/swift)
+![Platform: iOS 8/macOS 10.10/tvOS 9/watchOS 2](https://img.shields.io/badge/platform-iOS%20|%20macOS%20|%20tvOS%20|%20watchOS%20|%20Linux-blue.svg?style=flat)
+[![SwiftPM compatible](https://img.shields.io/badge/SwiftPM-compatible-4BC51D.svg?style=flat)](https://swift.org/package-manager/)
 [![Build Status](https://travis-ci.org/ikhvorost/PromiseQ.svg?branch=master)](https://travis-ci.org/ikhvorost/PromiseQ)
 
 Fast, powerful and lightweight implementation of Promises on Swift.
@@ -22,8 +22,8 @@ Promise's executors (closures) are called synchronously one by one if they are o
 ### Lightweight
 Whole implementation consists of less than three hundred lines of code.
 
-### Memory management
-PromiseQ is based on `struct` and a stack of callbacks that removes problems with reference cycles etc.
+### Stack memory
+The promise instances are based on `struct` and use a stack of callbacks that eliminates memory management issues related to reference cycles.
 
 ### Standard API
 Based on JavaScript [Promises/A+](https://promisesaplus.com/) spec and it also includes 5 standard static methods: `Promise.all/all(settled:)`, `Promise.race`, `Promise.resolve/reject`.
@@ -162,23 +162,21 @@ fetch("https://api.github.com/users")
 
 ## Documentation
 
-TDB
+TBD
 
 ## Installation
 
-### Swift Package Manager (SPM)
+### Swift Package Manager (SwiftPM)
 
-```
+Select `Xcode` > `File` > `Swift Packages` > `Add Package Dependency...` > Paste `https://github.com/ikhvorost/PromiseQ.git` and then `import PromiseQ` in source files.
+
+For Swift packages:
+
+```swift
 dependencies: [
-    .package(url: "https://github.com/ikhvorost/PromiseQ.git", from: "1.0")
+    .package(url: "https://github.com/ikhvorost/PromiseQ.git", from: "1.0.0")
 ]
 ```
-
-Or
-
-`Xcode` > `File` > `Swift Packages` > `Add Package Dependency...` > Paste `https://github.com/ikhvorost/PromiseQ.git`
-
-Then `import PromiseQ` in source files.
 
 ### Manual
 

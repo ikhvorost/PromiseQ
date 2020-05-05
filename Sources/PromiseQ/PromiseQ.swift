@@ -1,9 +1,14 @@
 //
-// PromiseQ
-// Copyright 2020 Iurii Khvorost <iurii.khvorost@gmail.com>. All rights reserved.
+//  PromiseQ.swift
+//  PromiseQ
+//
+//  Created by Iurii Khvorost <iurii.khvorost@gmail.com> on 05/05/2020.
+//  Copyright © 2020 Iurii Khvorost. All rights reserved.
 //
 
+
 import Foundation
+
 
 private class Semaphore {
 	var cancelled = false
