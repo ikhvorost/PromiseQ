@@ -176,13 +176,13 @@ dependencies: [
 
 Or
 
-`Xcode` > `File` > `Swift Packages` > `Add Package Dependency...` > `Paste` `https://github.com/ikhvorost/PromiseQ.git`
+`Xcode` > `File` > `Swift Packages` > `Add Package Dependency...` > Paste `https://github.com/ikhvorost/PromiseQ.git`
 
 Then `import PromiseQ` in source files.
 
 ### Manual
 
-Just copy PromiseQ.swift](Sources/PromiseQ/PromiseQ.swift) file to your project.
+Just copy [PromiseQ.swift](Sources/PromiseQ/PromiseQ.swift) file to your project.
 
 ## License
 
