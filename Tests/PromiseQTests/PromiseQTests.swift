@@ -2,6 +2,7 @@
 import XCTest
 @testable import PromiseQ
 
+/// String errors
 extension String : LocalizedError {
 	public var errorDescription: String? { return self }
 }
@@ -668,11 +669,13 @@ final class PromiseLiteTests: XCTestCase {
 	func testPromise_Sample() {
 		let exp = expect()
 		
+		/// GitHub user fields
 		struct User : Codable {
 			let login: String
 			let avatar_url: String
 		}
 		
+		/// Make a HTTP request to fetch data by a path
 		func fetch(_ path: String) -> Promise<Data> {
 			Promise<Data> { resolve, reject in
 				guard let url = URL(string: path) else {
@@ -681,7 +684,7 @@ final class PromiseLiteTests: XCTestCase {
 				}
 				
 				var request = URLRequest(url: url)
-				
+					
 				// GitHub auth
 				if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] {
 					request.addValue("token \(token)", forHTTPHeaderField: "Authorization")
@@ -694,7 +697,7 @@ final class PromiseLiteTests: XCTestCase {
 					}
 					
 					if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-						reject("HTTP \(http.statusCode) - \(http.allHeaderFields.description)")
+						reject("HTTP \(http.statusCode)")
 						return
 					}
 					
