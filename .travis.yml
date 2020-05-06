@@ -1,5 +1,5 @@
 os: osx
 osx_image: xcode11.3
 language: swift
-script: swift test --enable-test-discovery
-after_success: bash <(curl -s https://codecov.io/bash)
+script: swift test --enable-test-discovery --enable-code-coverage
+after_success: bash <(curl -s https://codecov.io/bash) -f $(swift test --show-codecov-path)
