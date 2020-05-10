@@ -709,7 +709,7 @@ final class PromiseLiteTests: XCTestCase {
 					return
 				}
 				
-				var request = URLRequest(url: url)
+				var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 10)
 					
 				// GitHub auth
 				if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] {
@@ -762,7 +762,6 @@ final class PromiseLiteTests: XCTestCase {
 		}
 		.catch { error in
 			print("Error: \(error)")
-			exp.fulfill()
 		}
 		
 		wait(exp, timeout: 4)

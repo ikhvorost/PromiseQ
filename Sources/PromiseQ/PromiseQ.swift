@@ -492,7 +492,7 @@ extension Promise where T == Void {
 
 extension Promise {
 	
-	/// Returns a single promise that resolves when all of the promises have been resolved or settled and returns an array of their results.
+	/// Executes all promises in parallel and returns a single promise that resolves when all of the promises have been resolved or settled and returns an array of their results.
 	///
 	/// If `setteled=false` the new promise resolves when all listed promises are resolved, and the array of their results becomes its result. If any of the promises is rejected, the promise returned by Promise.all immediately rejects with that error.
 	///
@@ -534,21 +534,37 @@ extension Promise {
 	///	- Returns: A new single promise.
 	/// - SeeAlso: `Promise.race()`
 	public static func all(settled: Bool = false, _ promises:[Promise<T>]) -> Promise<Array<T>> {
-		var results = Array<T>()
+		var results = [Int : T]()
+		let semaphore = DispatchSemaphore(value: 1)
 		
-		var p = Promise<Void> { }
-		promises.forEach { item in
-			p = p.then {
-				item.then { results.append($0) }
+		return Promise<Array<T>> { resolve, reject in
+			
+			func setResult(_ i: Int, value: T) {
+				
+				semaphore.wait()
+				
+				results[i] = value
+				if results.count == promises.count {
+					let values = results.keys.sorted().map { results[$0]! }
+					resolve(values)
+				}
+				
+				semaphore.signal()
 			}
 			
-			if settled, T.self == Any.self {
-				p = p.catch { results.append($0 as! T) }
+			for i in 0..<promises.count {
+				promises[i].then {
+					setResult(i, value: $0)
+				}
+				.catch { error in
+					if settled , let value = error as? T {
+						setResult(i, value: value)
+					}
+					else {
+						reject(error)
+					}
+				}
 			}
-		}
-		
-		return p.then {
-			return results
 		}
 	}
 	
