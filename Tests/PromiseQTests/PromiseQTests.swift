@@ -54,10 +54,12 @@ final class PromiseLiteTests: XCTestCase {
 		let exp2 = expect()
 		
 		Promise {
+			XCTAssert(DispatchQueue.current == DispatchQueue.global())
 			exp1.fulfill()
 		}
 		
 		Promise<Void> { resolve, reject in
+			XCTAssert(DispatchQueue.current == DispatchQueue.global())
 			exp2.fulfill()
 		}
 		
@@ -347,7 +349,7 @@ final class PromiseLiteTests: XCTestCase {
 		}
 		.then { value in
 			XCTAssert(value == 100)
-				exp2.fulfill()
+			exp2.fulfill()
 		}
 		.finally {
 			exp3.fulfill()
@@ -389,7 +391,7 @@ final class PromiseLiteTests: XCTestCase {
 		let exp = expect()
 		
 		Promise {
-			return 100
+			return 200
 		}
 		.then { value in
 			Promise {
@@ -397,7 +399,7 @@ final class PromiseLiteTests: XCTestCase {
 			}
 		}
 		.then {
-			XCTAssert($0 == 10)
+			XCTAssert($0 == 20)
 			exp.fulfill()
 		}
 		
@@ -528,12 +530,12 @@ final class PromiseLiteTests: XCTestCase {
 			},
 			Promise { resolve, reject in
 				asyncAfter {
-					resolve(3)
+					resolve(200)
 				}
 			}
 		])
 		.then { result in
-			XCTAssert(result as! Int == 3)
+			XCTAssert(result as! Int == 200)
 			exp.fulfill()
 		}
 		.catch { error in
@@ -579,22 +581,18 @@ final class PromiseLiteTests: XCTestCase {
 		
 		wait(exp)
 	}
-
-	func testPromise_CancelSync() {
+	
+	func testPromise_CancelInside() {
 		let exp1 = expect()
 		let exp2 = expect(inverted: true)
 		
-		let p = Promise.resolve(200)
-		p.then { (value:Int) -> Void in
-			XCTAssert(value == 200)
+		let p = Promise {
 			exp1.fulfill()
-			
-			p.cancel() // Cancel the promise
+		}
+		p.then {
+			p.cancel()
 		}
 		.then {
-			exp2.fulfill()
-		}
-		.finally {
 			exp2.fulfill()
 		}
 		
@@ -633,6 +631,34 @@ final class PromiseLiteTests: XCTestCase {
 	}
 	
 	func testPromise_Suspend() {
+		let exp = expect(inverted: true)
+		
+		Promise {
+			exp.fulfill()
+		}
+		.suspend()
+		
+		wait(exp)
+	}
+	
+	func testPromise_SuspendInside() {
+		let exp1 = expect()
+		let exp2 = expect(inverted: true)
+		
+		let p = Promise {
+			exp1.fulfill()
+		}
+		p.then {
+			p.suspend()
+		}
+		.then {
+			exp2.fulfill()
+		}
+		
+		waitAll([exp1, exp2])
+	}
+	
+	func testPromise_SuspendResume() {
 		let exp = expect()
 		var str = ""
 		
