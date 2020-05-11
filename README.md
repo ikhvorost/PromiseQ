@@ -1,8 +1,8 @@
 # PromiseQ
 
-[![Language: Swift5](https://img.shields.io/badge/language-swift5-f48041.svg?style=flat)](https://developer.apple.com/swift)
-![Platform: iOS 8/macOS 10.10/tvOS 9/watchOS 2](https://img.shields.io/badge/platform-iOS%20|%20macOS%20|%20tvOS%20|%20watchOS%20|%20Linux-blue.svg?style=flat)
-[![SwiftPM compatible](https://img.shields.io/badge/SwiftPM-compatible-4BC51D.svg?style=flat)](https://swift.org/package-manager/)
+[![Language: Swift](https://img.shields.io/badge/language-swift-f48041.svg?style=flat)](https://developer.apple.com/swift)
+![Platform: iOS 8+/macOS10.11](https://img.shields.io/badge/platform-iOS%20|%20macOS%20|%20tvOS%20|%20watchOS%20|%20Linux-blue.svg?style=flat)
+[![SPM compatible](https://img.shields.io/badge/SPM-compatible-4BC51D.svg?style=flat)](https://swift.org/package-manager/)
 [![Build Status](https://travis-ci.org/ikhvorost/PromiseQ.svg?branch=master)](https://travis-ci.org/ikhvorost/PromiseQ)
 [![codecov](https://codecov.io/gh/ikhvorost/PromiseQ/branch/master/graph/badge.svg)](https://codecov.io/gh/ikhvorost/PromiseQ)
 
@@ -23,14 +23,14 @@ Promise's executors (closures) are called synchronously one by one if they are o
 ### Lightweight
 Whole implementation consists of less than three hundred lines of code.
 
-### Stack memory
-The promise instances are based on `struct` and use a stack of callbacks that eliminates memory management issues related to reference cycles.
+### Memory management
+PromiseQ is based on `struct` and a stack of callbacks that removes problems with reference cycles etc.
 
 ### Standard API
 Based on JavaScript [Promises/A+](https://promisesaplus.com/) spec and it also includes 5 standard static methods: `Promise.all/all(settled:)`, `Promise.race`, `Promise.resolve/reject`.
 
-### Suspending
-It is an additional useful feature to `suspend` the execution of promises and `resume` them later. Suspending does not affect the execution of a promise that has already begun it stops execution of next promises.
+### Suspension
+It is an additional useful feature to `suspend` the execution of promises and `resume` them later. Suspension does not affect the execution of a promise that has already begun it stops execution of next promises.
 
 ### Cancelation
 It is possible to `cancel` all queued promises at all in case to stop an asynchronous logic. Cancellation does not affect the execution of a promise that has already begun it cancels execution of the next promises.
@@ -39,7 +39,7 @@ It is possible to `cancel` all queued promises at all in case to stop an asynchr
 
 You can use promises in simple and convenient synchronous way:
 
-```swift
+``` swift
 Promise {
 	try String(contentsOfFile: file)
 }
@@ -53,7 +53,7 @@ Promise {
 
 By default all promises executors are called on global default queue - `DispatchQueue.global()` but you can also specify a needed queue to run e.g:
 
-```swift
+``` swift
 Promise {
 	try String(contentsOfFile: file)
 }
@@ -67,7 +67,7 @@ Promise {
 
 Use `resolve/reject` callbacks to work with a promise asynchronously:
 
-```swift
+``` swift
 Promise { resolve, reject in
 	// Will be resolved after 2 secs
 	DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
@@ -83,16 +83,10 @@ Promise { resolve, reject in
 
 Fetch avatars of first GitHub users.
 
-```swift
+``` swift
 /// String errors
 extension String : LocalizedError {
 	public var errorDescription: String? { return self }
-}
-
-/// GitHub user fields
-struct User : Codable {
-	let login: String
-	let avatar_url: String
 }
 
 /// GitHub user fields
@@ -160,22 +154,21 @@ fetch("https://api.github.com/users")
 }
 ```
 
-
 ## Documentation
 
-TBD
+TDB
 
 ## Installation
 
-### Swift Package Manager (SwiftPM)
+### Swift Package Manager (SPM)
 
 Select `Xcode` > `File` > `Swift Packages` > `Add Package Dependency...` > Paste `https://github.com/ikhvorost/PromiseQ.git` and then `import PromiseQ` in source files.
 
 For Swift packages:
 
-```swift
+``` swift
 dependencies: [
-    .package(url: "https://github.com/ikhvorost/PromiseQ.git", from: "1.0.0")
+    .package(url: "https://github.com/ikhvorost/PromiseQ.git", from: "1.0")
 ]
 ```
 
@@ -185,4 +178,4 @@ Just copy [PromiseQ.swift](Sources/PromiseQ/PromiseQ.swift) file to your project
 
 ## License
 
-PromiseQ is available under the MIT license. See the LICENSE file for more info.
+PromiseQ is available under the MIT license. See the [LICENSE](LICENSE) file for more info.
