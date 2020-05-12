@@ -31,6 +31,49 @@ func asyncAfter(_ sec: Double = 0.25, closure: @escaping (() -> Void) ) {
     }
 }
 
+/// GitHub user fields
+struct User : Codable {
+	let login: String
+	let avatar_url: String
+}
+
+/// Make a HTTP request to fetch data by a path
+func fetch(_ path: String) -> Promise<Data> {
+	Promise<Data> { resolve, reject in
+		guard let url = URL(string: path) else {
+			reject("Bad path")
+			return
+		}
+		
+		var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 10)
+			
+		// GitHub auth
+		if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] {
+			request.addValue("token \(token)", forHTTPHeaderField: "Authorization")
+		}
+		
+		URLSession.shared.dataTask(with: request) { data, response, error in
+			guard error == nil else {
+				reject(error!)
+				return
+			}
+			
+			if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+				reject("HTTP \(http.statusCode)")
+				return
+			}
+			
+			guard let data = data else {
+				reject("No Data")
+				return
+			}
+			
+			resolve(data)
+		}
+		.resume()
+	}
+}
+
 final class PromiseLiteTests: XCTestCase {
 	
 	func expect(inverted: Bool = false, name: String = #function) -> XCTestExpectation {
@@ -691,56 +734,64 @@ final class PromiseLiteTests: XCTestCase {
 		wait(exp)
 	}
 	
-	/// Load avatars of first 30 GitHub users
-	func testPromise_Sample() {
+	func testPromise_Async() {
 		let exp = expect()
 		
-		/// GitHub user fields
-		struct User : Codable {
-			let login: String
-			let avatar_url: String
+		async<Int> {
+			exp.fulfill()
+			return 200
 		}
 		
-		/// Make a HTTP request to fetch data by a path
-		func fetch(_ path: String) -> Promise<Data> {
-			Promise<Data> { resolve, reject in
-				guard let url = URL(string: path) else {
-					reject("Bad path")
-					return
+		wait(exp)
+	}
+	
+	func testPromise_AwaitSync() {
+		let exp = expect()
+		
+		do {
+			let text = try Promise { resolve, reject in
+				asyncAfter {
+					resolve("Hello")
 				}
-				
-				var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 10)
-					
-				// GitHub auth
-				if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] {
-					request.addValue("token \(token)", forHTTPHeaderField: "Authorization")
-				}
-				
-				URLSession.shared.dataTask(with: request) { data, response, error in
-					guard error == nil else {
-						reject(error!)
-						return
-					}
-					
-					if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-						reject("HTTP \(http.statusCode)")
-						return
-					}
-					
-					guard let data = data else {
-						reject("No Data")
-						return
-					}
-					
-					resolve(data)
-				}
-				.resume()
-			}
+			}.await()
+			
+			XCTAssert(text == "Hello")
+			exp.fulfill()
 		}
+		catch {
+			print(error)
+		}
+		
+		wait(exp)
+	}
+	
+	func testPromise_AwaitAsync() {
+		let exp = expect()
+		
+		async {
+			let text = try async { resolve, reject in
+				asyncAfter {
+					resolve("Hello")
+				}
+			}.await()
+			
+			XCTAssert(text == "Hello")
+			exp.fulfill()
+		}
+		.catch {
+			print($0)
+		}
+		
+		wait(exp)
+	}
+	
+	/// Load avatars of first 30 GitHub users
+	func testPromise_SampleThen() {
+		let exp = expect()
 		
 		fetch("https://api.github.com/users")
-		.then { data in
-			try JSONDecoder().decode([User].self, from: data)
+		.then { usersData in
+			try JSONDecoder().decode([User].self, from: usersData)
 		}
 		.then { users -> Promise<Array<Data>> in
 			guard users.count > 0 else {
@@ -752,13 +803,45 @@ final class PromiseLiteTests: XCTestCase {
 				.map { fetch($0) }
 			)
 		}
-		.then { results in
-			results.map { NSImage(data: $0) }
+		.then { imagesData in
+			imagesData.map { NSImage(data: $0) }
 		}
 		.then(.main) { images in
 			XCTAssert(DispatchQueue.current == DispatchQueue.main)
 			XCTAssert(images.count == 30)
 			exp.fulfill()
+		}
+		.catch { error in
+			print("Error: \(error)")
+		}
+		
+		wait(exp, timeout: 4)
+	}
+	
+	func testPromise_SampleAwait() {
+		let exp = expect()
+		
+		async {
+			let usersData = try fetch("https://api.github.com/users").await()
+			
+			let users = try async { try JSONDecoder().decode([User].self, from: usersData) }.await()
+			guard users.count > 0 else {
+				throw "Users list is empty"
+			}
+			
+			let imagesData = try async.all(
+				users
+					.map { $0.avatar_url }
+					.map { fetch($0) }
+			).await()
+			
+			let images = try async { imagesData.map { NSImage(data: $0) } }.await()
+			
+			async(.main) {
+				XCTAssert(DispatchQueue.current == DispatchQueue.main)
+				XCTAssert(images.count == 30)
+				exp.fulfill()
+			}
 		}
 		.catch { error in
 			print("Error: \(error)")

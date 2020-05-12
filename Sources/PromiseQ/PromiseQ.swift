@@ -33,6 +33,27 @@ private class Monitor {
 	var semaphore: DispatchSemaphore?
 }
 
+/// Alias for Promise.
+///
+/// The alias is used for `async/await` notation.
+///
+/// 	Promise {
+///		    return 200
+///		}
+///		.then { value in
+///		    print(value)
+///		}
+///		// Prints "200"
+///
+///		// Same as above
+/// 	async {
+/// 	    let value = try async { return 200 }.await()
+/// 	    print(value)
+///		}
+///
+/// - SeeAlso: `Promise.await()`.
+public typealias async = Promise
+
 /// Promise represents an asynchronous operation that can be chained.
 public struct Promise<T> {
 	
@@ -449,9 +470,53 @@ public struct Promise<T> {
 	public func cancel() {
 		monitor.cancelled = true
 	}
-}
-
-extension Promise {
+	
+	/// Returns a result of the promise synchronously or throws an error.
+	///
+	/// It blocks the current execution queue and waits for a result or an error:
+	///
+	///		do {
+	///		    let text = try Promise { try String(contentsOfFile: file) }.await()
+	///		    print(text)
+	///		}
+	///		catch {
+	///		    print(error)
+	///		}
+	///
+	///	Use `async/await` notation to work asynchronously:
+	///
+	///		async {
+	///		    let text = try async { try String(contentsOfFile: file) }.await()
+	///		    print(text)
+	///		}
+	///		.catch {
+	///		    print($0)
+	///		}
+	///
+	///	- Returns: A result of the promise.
+	/// - SeeAlso: async.
+	public func await() throws -> T {
+		var result: T?
+		var error: Error?
+		let ready = DispatchSemaphore(value: 0)
+		
+		self.then {
+			result = $0
+			ready.signal()
+		}
+		.catch {
+			error = $0
+			ready.signal()
+		}
+		
+		ready.wait()
+		
+		if let e = error {
+			throw e
+		}
+		
+		return result!
+	}
 	
 	/// Creates a resolved promise with a given value.
 	///
@@ -469,28 +534,6 @@ extension Promise {
 	public static func resolve(_ value: T) -> Promise<T> {
 		return Promise<T> { return value }
 	}
-}
-
-extension Promise where T == Void {
-	
-	/// Creates a rejected promise with a given error.
-	///
-	/// 	Promise {
-	///		    throw error
-	///		}
-	///
-	///		// Same as above
-	///		Promise.rejected(error)
-	///
-	///	- Parameter error: The error of the rejected promise.
-	///	- Returns: A new rejected promise
-	public static func reject(_ error: Error) -> Promise<T> {
-		return Promise<T> { throw error }
-	}
-	
-}
-
-extension Promise {
 	
 	/// Executes all promises in parallel and returns a single promise that resolves when all of the promises have been resolved or settled and returns an array of their results.
 	///
@@ -535,13 +578,13 @@ extension Promise {
 	/// - SeeAlso: `Promise.race()`
 	public static func all(settled: Bool = false, _ promises:[Promise<T>]) -> Promise<Array<T>> {
 		var results = [Int : T]()
-		let semaphore = DispatchSemaphore(value: 1)
+		let mutex = DispatchSemaphore(value: 1)
 		
 		return Promise<Array<T>> { resolve, reject in
 			
 			func setResult(_ i: Int, value: T) {
 				
-				semaphore.wait()
+				mutex.wait()
 				
 				results[i] = value
 				if results.count == promises.count {
@@ -549,7 +592,7 @@ extension Promise {
 					resolve(values)
 				}
 				
-				semaphore.signal()
+				mutex.signal()
 			}
 			
 			for i in 0..<promises.count {
@@ -568,6 +611,24 @@ extension Promise {
 		}
 	}
 	
+}
+
+extension Promise where T == Void {
+	
+	/// Creates a rejected promise with a given error.
+	///
+	/// 	Promise {
+	///		    throw error
+	///		}
+	///
+	///		// Same as above
+	///		Promise.rejected(error)
+	///
+	///	- Parameter error: The error of the rejected promise.
+	///	- Returns: A new rejected promise
+	public static func reject(_ error: Error) -> Promise<Void> {
+		return Promise<Void> { () -> Void in throw error }
+	}
 }
 
 extension Promise where T == Any {
