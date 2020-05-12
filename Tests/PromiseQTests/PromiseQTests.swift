@@ -76,91 +76,82 @@ func fetch(_ path: String) -> Promise<Data> {
 
 final class PromiseLiteTests: XCTestCase {
 	
-	func expect(inverted: Bool = false, name: String = #function) -> XCTestExpectation {
-		let exp = expectation(description: name);
-		exp.isInverted = inverted
-		return exp
-	}
-	
-	func wait(_ expectation: XCTestExpectation, timeout: TimeInterval = 1) {
-		wait(for: [expectation], timeout: timeout)
-	}
-	
-	func waitAll(_ expectations: [XCTestExpectation], timeout: TimeInterval = 1) {
+	func wait(count: Int, timeout: TimeInterval = 1, name: String = #function, closure: ([XCTestExpectation]) -> Void) {
+		var expectations = [XCTestExpectation]()
+		
+		for _ in 0..<count {
+			let exp = expectation(description: name)
+			expectations.append(exp)
+		}
+		
+		closure(expectations)
+		
 		wait(for: expectations, timeout: timeout)
+	}
+	
+	func wait(timeout: TimeInterval = 1, name: String = #function, closure: (XCTestExpectation) -> Void) {
+		wait(count: 1, timeout: timeout, name: name) { expectations in
+			closure(expectations[0])
+		}
 	}
 	
 	// Tests
 	
 	func testPromise_AutoRun() {
-		let exp1 = expect()
-		let exp2 = expect()
-		
-		Promise {
-			XCTAssert(DispatchQueue.current == DispatchQueue.global())
-			exp1.fulfill()
+		wait(count: 2) { expectations in
+			Promise {
+				XCTAssert(DispatchQueue.current == DispatchQueue.global())
+				expectations[0].fulfill()
+			}
+			
+			Promise<Void> { resolve, reject in
+				XCTAssert(DispatchQueue.current == DispatchQueue.global())
+				expectations[1].fulfill()
+			}
 		}
-		
-		Promise<Void> { resolve, reject in
-			XCTAssert(DispatchQueue.current == DispatchQueue.global())
-			exp2.fulfill()
-		}
-		
-		waitAll([exp1, exp2])
 	}
 	
 	func testPromise_Resolve() {
-		let exp = expect()
-		
-		let promise = Promise.resolve(200)
-		
-		promise.then {
-			XCTAssert($0 == 200)
-			exp.fulfill()
+		wait { expectation in
+			let promise = Promise.resolve(200)
+			promise.then {
+				XCTAssert($0 == 200)
+				expectation.fulfill()
+			}
 		}
-		
-		wait(exp)
 	}
 	
 	func testPromise_Reject() {
-		let exp = expect()
-		
-		let promise = Promise.reject("Some error")
-		
-		promise.then {
-			XCTFail()
+		wait { expectation in
+			let promise = Promise.reject("Some error")
+			promise.then {
+				XCTFail()
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Some error")
+				expectation.fulfill()
+			}
 		}
-		.catch { error in
-			XCTAssert(error.localizedDescription == "Some error")
-			exp.fulfill()
-		}
-		
-		wait(exp)
 	}
 	
     func testPromise_CreateOnMainQueue() {
-		let expectation = expect()
-		
-		Promise {
-			XCTAssert(DispatchQueue.current == DispatchQueue.global())
-			expectation.fulfill()
-		}
-		
-		wait(expectation)
-    }
-	
-	func testPromise_CreateOnGlobalQueue() {
-		
-		let expectation = expect()
-		
-		DispatchQueue.global().async {
+		wait { expectation in
 			Promise {
 				XCTAssert(DispatchQueue.current == DispatchQueue.global())
 				expectation.fulfill()
 			}
 		}
-		
-		wait(expectation)
+    }
+	
+	func testPromise_CreateOnGlobalQueue() {
+		wait { expectation in
+			DispatchQueue.global().async {
+				Promise {
+					XCTAssert(DispatchQueue.current == DispatchQueue.global())
+					expectation.fulfill()
+				}
+			}
+		}
     }
 	
 	func thread(expectation: XCTestExpectation) {
@@ -174,679 +165,618 @@ final class PromiseLiteTests: XCTestCase {
 	}
 	
 	func testPromise_CreateOnThread() {
-		let expectation = expect()
-		
-		Thread.detachNewThreadSelector(#selector(thread), toTarget: self, with: expectation);
-		
-		wait(expectation)
+		wait { expectation in
+			Thread.detachNewThreadSelector(#selector(thread), toTarget: self, with: expectation);
+		}
     }
 	
 	func testPromise_RunOnQueues() {
-		let exp1 = expect()
-		let exp2 = expect()
-		let exp3 = expect()
-		let exp4 = expect()
-		let exp5 = expect()
-		
-		Promise(.main) {
-			XCTAssert(DispatchQueue.current == DispatchQueue.main)
-			exp1.fulfill()
+		wait(count: 5) { expectations in
+			Promise(.main) {
+				XCTAssert(DispatchQueue.current == DispatchQueue.main)
+				expectations[0].fulfill()
+			}
+			.then(.global()) { () -> Void in
+				XCTAssert(DispatchQueue.current == DispatchQueue.global())
+				expectations[1].fulfill()
+			}
+			.then(.global(qos: .utility)) { () -> Void in
+				XCTAssert(DispatchQueue.current == DispatchQueue.global(qos: .utility))
+				expectations[2].fulfill()
+			}
+			.then { () -> Void in
+				XCTAssert(DispatchQueue.current == DispatchQueue.global())
+				expectations[3].fulfill()
+			}
+			.then(.global(qos: .background)) {
+				XCTAssert(DispatchQueue.current == DispatchQueue.global(qos: .background))
+				expectations[4].fulfill()
+			}
 		}
-		.then(.global()) { () -> Void in
-			XCTAssert(DispatchQueue.current == DispatchQueue.global())
-			exp2.fulfill()
-		}
-		.then(.global(qos: .utility)) { () -> Void in
-			XCTAssert(DispatchQueue.current == DispatchQueue.global(qos: .utility))
-			exp3.fulfill()
-		}
-		.then { () -> Void in
-			XCTAssert(DispatchQueue.current == DispatchQueue.global())
-			exp4.fulfill()
-		}
-		.then(.global(qos: .background)) {
-			XCTAssert(DispatchQueue.current == DispatchQueue.global(qos: .background))
-			exp5.fulfill()
-		}
-		
-		waitAll([exp1, exp2, exp3, exp4, exp5])
 	}
 	
 	func testPromise_ThrowNoCatch() {
-		let exp = expect(inverted: true)
-		
-		Promise {
-			throw "Some Error"
+		wait { expectation in
+			expectation.isInverted = true
+			
+			Promise {
+				throw "Some Error"
+			}
+			.then {
+				expectation.fulfill()
+			}
 		}
-		.then {
-			exp.fulfill()
-		}
-		
-		wait(exp)
 	}
 	
 	func testPromise_CatchThen() {
-		let expectation = expect()
-		
-		Promise {
-			return 100
+		wait { expectation in
+			Promise {
+				return 100
+			}
+			.catch { error in
+				XCTFail()
+			}
+			.then {
+				expectation.fulfill()
+			}
 		}
-		.catch { error in
-			XCTFail()
-		}
-		.then {
-			expectation.fulfill()
-		}
-		
-		wait(expectation)
 	}
 		
 	func testPromise_ThrowCatch() {
-		let expectation = expect()
-		
-		Promise {
-			throw "Some Error"
+		wait { expectation in
+			Promise {
+				throw "Some Error"
+			}
+			.then {
+				XCTFail()
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Some Error")
+				expectation.fulfill()
+			}
 		}
-		.then {
-			XCTFail()
-		}
-		.catch { error in
-			XCTAssert(error.localizedDescription == "Some Error")
-			expectation.fulfill()
-		}
-		
-		wait(expectation)
 	}
 	
 	func testPromise_ThrowCatchThen() {
-		let expectation = expect()
-		
-		Promise {
-			throw "Some Error"
+		wait { expectation in
+			Promise {
+				throw "Some Error"
+			}
+			.then {
+				XCTFail()
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Some Error")
+			}
+			.then {
+				expectation.fulfill()
+			}
 		}
-		.then {
-			XCTFail()
-		}
-		.catch { error in
-			XCTAssert(error.localizedDescription == "Some Error")
-		}
-		.then {
-			expectation.fulfill()
-		}
-		
-		wait(expectation)
 	}
 	
 	func testPromise_Rethrowing() {
-		let expectation = expect()
-		
-		Promise {
-			throw "Some Error"
+		wait { expectation in
+			Promise {
+				throw "Some Error"
+			}
+			.then {
+				XCTFail()
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Some Error")
+				throw "Other Error"
+			}
+			.then {
+				XCTFail()
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Other Error")
+				expectation.fulfill()
+			}
 		}
-		.then {
-			XCTFail()
-		}
-		.catch { error in
-			XCTAssert(error.localizedDescription == "Some Error")
-			throw "Other Error"
-		}
-		.then {
-			XCTFail()
-		}
-		.catch { error in
-			XCTAssert(error.localizedDescription == "Other Error")
-			
-			expectation.fulfill()
-		}
-		
-		wait(expectation)
 	}
 	
 	func testPromise_AsyncCatch() {
-		let expectation = expect()
-		
-		Promise<Int> { resolve, reject in
-			asyncAfter {
-				reject("Error")
-				// Skipped
-				resolve(200)
+		wait { expectation in
+			Promise<Int> { resolve, reject in
+				asyncAfter {
+					reject("Error")
+					// Skipped
+					resolve(200)
+				}
+			}
+			.then { value in
+				XCTFail()
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Error")
+				expectation.fulfill()
 			}
 		}
-		.then { value in
-			XCTFail()
-		}
-		.catch { error in
-			XCTAssert(error.localizedDescription == "Error")
-			expectation.fulfill()
-		}
-		
-		wait(expectation)
 	}
 	
 	func testPromise_SyncThen() {
-		let expectation = expect()
-		
-		Promise {
-			return "Hello"
+		wait { expectation in
+			Promise {
+				return "Hello"
+			}
+			.then {
+				XCTAssert($0 == "Hello")
+				expectation.fulfill()
+			}
 		}
-		.then {
-			XCTAssert($0 == "Hello")
-			expectation.fulfill()
-		}
-		
-		wait(expectation)
 	}
 	
 	func testPromise_AsyncThen() {
-		let expectation = expect()
-		
-		Promise<String> { resolve, reject in
-			asyncAfter {
-				resolve("Hello")
-				
-				// Skipped
-				resolve("World")
-				reject("Some Error")
+		wait { expectation in
+			Promise<String> { resolve, reject in
+				asyncAfter {
+					resolve("Hello")
+					
+					// Skipped
+					resolve("World")
+					reject("Some Error")
+				}
+			}
+			.then {
+				XCTAssert($0 == "Hello")
+				expectation.fulfill()
+			}
+			.catch { error in
+				XCTFail()
 			}
 		}
-		.then {
-			XCTAssert($0 == "Hello")
-			expectation.fulfill()
-		}
-		.catch { error in
-			XCTFail()
-		}
-		
-		wait(expectation)
 	}
 	
 	func testPromise_AsyncThenAsyncThen() {
-		let expectation = expect()
-		
-		Promise<String> { resolve, reject in
-			asyncAfter {
-				resolve("Hello")
+		wait { expectation in
+			Promise<String> { resolve, reject in
+				asyncAfter {
+					resolve("Hello")
+				}
+			}
+			.then { str, resolve, reject in
+				resolve(str.count)
+			}
+			.then {
+				XCTAssert($0 == 5)
+				expectation.fulfill()
 			}
 		}
-		.then { str, resolve, reject in
-			resolve(str.count)
-		}
-		.then {
-			XCTAssert($0 == 5)
-			expectation.fulfill()
-		}
-		
-		wait(expectation)
 	}
 	
 	func testPromise_FinallyThen() {
-		let exp1 = expect()
-		let exp2 = expect()
-		let exp3 = expect()
-		
-		Promise {
-			return 100
+		wait(count: 3) { expectations in
+			Promise {
+				return 200
+			}
+			.finally {
+				expectations[0].fulfill()
+			}
+			.then { value in
+				XCTAssert(value == 200)
+				expectations[1].fulfill()
+			}
+			.finally {
+				expectations[2].fulfill()
+			}
 		}
-		.finally {
-			exp1.fulfill()
-		}
-		.then { value in
-			XCTAssert(value == 100)
-			exp2.fulfill()
-		}
-		.finally {
-			exp3.fulfill()
-		}
-		
-		waitAll([exp1, exp2, exp3])
 	}
 	
 	func testPromise_FinallyCatch() {
-		let exp1 = expect()
-		let exp2 = expect()
-		let exp3 = expect()
-		
-		Promise<Int> { resolve, reject in
-			asyncAfter {
-				reject("Error")
-				// Skipped
-				resolve(200)
+		wait(count: 3) { expectations in
+			Promise<Int> { resolve, reject in
+				asyncAfter {
+					reject("Error")
+					// Skipped
+					resolve(200)
+				}
+			}
+			.finally {
+				expectations[0].fulfill()
+			}
+			.then { value in
+				XCTFail()
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Error")
+				expectations[1].fulfill()
+			}
+			.finally {
+				expectations[2].fulfill()
 			}
 		}
-		.finally {
-			exp1.fulfill()
-		}
-		.then { value in
-			XCTFail()
-		}
-		.catch { error in
-			XCTAssert(error.localizedDescription == "Error")
-			exp2.fulfill()
-		}
-		.finally {
-			exp3.fulfill()
-		}
-		
-		waitAll([exp1, exp2, exp3])
 	}
 
 	func testPromise_ThenSyncPromise() {
-		let exp = expect()
-		
-		Promise {
-			return 200
-		}
-		.then { value in
+		wait { expectation in
 			Promise {
-				value / 10
+				return 200
+			}
+			.then { value in
+				Promise {
+					value / 10
+				}
+			}
+			.then {
+				XCTAssert($0 == 20)
+				expectation.fulfill()
 			}
 		}
-		.then {
-			XCTAssert($0 == 20)
-			exp.fulfill()
-		}
-		
-		wait(exp)
 	}
 	
 	func testPromise_ThenAsyncPromise() {
-		let exp = expect()
-		
-		Promise.resolve(200)
-		.then { value in
-			Promise { resolve, reject in
-				asyncAfter {
-					resolve(value / 10)
+		wait { expectation in
+			Promise.resolve(200)
+			.then { value in
+				Promise { resolve, reject in
+					asyncAfter {
+						resolve(value / 10)
+					}
 				}
 			}
+			.then {
+				XCTAssert($0 == 20)
+				expectation.fulfill()
+			}
 		}
-		.then {
-			XCTAssert($0 == 20)
-			exp.fulfill()
-		}
-		
-		wait(exp)
 	}
 	
 	func testPromise_All() {
-		let exp = expect()
-		
-		Promise.all([
-			Promise { resolve, reject in
-				asyncAfter {
-					resolve("Hello")
-				}
-			},
-			Promise { resolve, reject in
-				asyncAfter(0.5) {
-					resolve("World")
-				}
-			},
-		] )
-		.then { results in
-			XCTAssert(results.count == 2)
-			XCTAssert(results[0] == "Hello")
-			XCTAssert(results[1] == "World")
-			exp.fulfill()
+		wait { expectation in
+			Promise.all([
+				Promise { resolve, reject in
+					asyncAfter {
+						resolve("Hello")
+					}
+				},
+				Promise { resolve, reject in
+					asyncAfter(0.5) {
+						resolve("World")
+					}
+				},
+			] )
+			.then { results in
+				XCTAssert(results.count == 2)
+				XCTAssert(results[0] == "Hello")
+				XCTAssert(results[1] == "World")
+				expectation.fulfill()
+			}
 		}
-		
-		wait(exp)
 	}
 	
 	func testPromise_AllAny() {
-		let exp = expect()
-		
-		Promise.all([
-			Promise<Any> { resolve, reject in
-				asyncAfter {
-					resolve("Hello")
-				}
-			},
-			Promise.resolve(200)
-		] )
-		.then { results in
-			XCTAssert(results.count == 2)
-			XCTAssert(results[0] as! String == "Hello")
-			XCTAssert(results[1] as! Int == 200)
-			exp.fulfill()
+		wait { expectation in
+			Promise.all([
+				Promise<Any> { resolve, reject in
+					asyncAfter {
+						resolve("Hello")
+					}
+				},
+				Promise.resolve(200)
+			] )
+			.then { results in
+				XCTAssert(results.count == 2)
+				XCTAssert(results[0] as! String == "Hello")
+				XCTAssert(results[1] as! Int == 200)
+				expectation.fulfill()
+			}
 		}
-		
-		wait(exp)
 	}
 	
 	func testPromise_AllCatch() {
-		let exp = expect()
-		
-		Promise.all([
-			Promise { resolve, reject in
-				asyncAfter {
-					reject("Error")
-				}
-			},
-			Promise.resolve(3),
-		])
-		.then { results in
-			XCTFail()
+		wait { expectation in
+			Promise.all([
+				Promise { resolve, reject in
+					asyncAfter {
+						reject("Error")
+					}
+				},
+				Promise.resolve(3),
+			])
+			.then { results in
+				XCTFail()
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Error")
+				expectation.fulfill()
+			}
 		}
-		.catch { error in
-			XCTAssert(error.localizedDescription == "Error")
-			exp.fulfill()
-		}
-		
-		wait(exp)
 	}
 	
 	func testPromise_AllSettled() {
-		let exp = expect()
-		
-		Promise.all(settled: true, [
-			Promise<Any> { resolve, reject in
-				asyncAfter {
-					reject("Error")
-				}
-			},
-			Promise.resolve(200),
-			Promise.resolve(3.14)
-		])
-		.then { results in
-			XCTAssert(results.count == 3)
-			XCTAssert(results[0] as! String == "Error")
-			XCTAssert(results[1] as! Int == 200)
-			XCTAssert(results[2] as! Double == 3.14)
-			exp.fulfill()
+		wait { expectation in
+			Promise.all(settled: true, [
+				Promise<Any> { resolve, reject in
+					asyncAfter {
+						reject("Error")
+					}
+				},
+				Promise.resolve(200),
+				Promise.resolve(3.14)
+			])
+			.then { results in
+				XCTAssert(results.count == 3)
+				XCTAssert(results[0] as! String == "Error")
+				XCTAssert(results[1] as! Int == 200)
+				XCTAssert(results[2] as! Double == 3.14)
+				expectation.fulfill()
+			}
+			.catch { error in
+				XCTFail()
+			}
 		}
-		.catch { error in
-			XCTFail()
-		}
-		
-		wait(exp)
 	}
 	
 	func testPromise_RaceThen() {
-		let exp = expect()
-		
-		Promise.race([
-			Promise { resolve, reject in
-				asyncAfter(1) {
-					reject("Error")
+		wait { expectation in
+			Promise.race([
+				Promise { resolve, reject in
+					asyncAfter(1) {
+						reject("Error")
+					}
+				},
+				Promise { resolve, reject in
+					asyncAfter {
+						resolve(200)
+					}
 				}
-			},
-			Promise { resolve, reject in
+			])
+			.then { result in
+				XCTAssert(result as! Int == 200)
+				expectation.fulfill()
+			}
+			.catch { error in
+				XCTFail()
+			}
+		}
+	}
+	
+	func testPromise_RaceCatch() {
+		wait { expectation in
+			Promise.race([
+				Promise { resolve, reject in
+					asyncAfter {
+						reject("Error")
+					}
+				},
+				Promise { resolve, reject in
+					asyncAfter(1) {
+						resolve(3)
+					}
+				}
+			])
+			.then { result in
+				XCTFail()
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Error")
+				expectation.fulfill()
+			}
+		}
+	}
+	
+	func testPromise_Cancel() {
+		wait { expectation in
+			expectation.isInverted = true
+		
+			let p = Promise {
+				expectation.fulfill()
+			}
+			p.cancel()
+		}
+	}
+	
+	func testPromise_CancelInside() {
+		wait(count: 2) { expectations in
+			expectations[1].isInverted = true
+			
+			let p = Promise {
+				expectations[0].fulfill()
+			}
+			p.then {
+				p.cancel()
+			}
+			.then {
+				expectations[1].fulfill()
+			}
+		}
+	}
+	
+	func testPromise_CancelAsync() {
+		wait(count: 2) { expectations in
+			expectations[1].isInverted = true
+		
+			let p = Promise { resolve, reject in
 				asyncAfter {
 					resolve(200)
 				}
 			}
-		])
-		.then { result in
-			XCTAssert(result as! Int == 200)
-			exp.fulfill()
-		}
-		.catch { error in
-			XCTFail()
-		}
-		
-		wait(exp)
-	}
-	
-	func testPromise_RaceCatch() {
-		let exp = expect()
-		
-		Promise.race([
-			Promise { resolve, reject in
+			.then { value, resolve, reject in
+				XCTAssert(value == 200)
+				expectations[0].fulfill()
+				
 				asyncAfter {
-					reject("Error")
-				}
-			},
-			Promise { resolve, reject in
-				asyncAfter(1) {
-					resolve(3)
+					resolve(())
 				}
 			}
-		])
-		.then { result in
-			XCTFail()
-		}
-		.catch { error in
-			XCTAssert(error.localizedDescription == "Error")
-			exp.fulfill()
-		}
-		
-		wait(exp)
-	}
-	
-	func testPromise_Cancel() {
-		let exp = expect(inverted: true)
-		
-		let p = Promise {
-			exp.fulfill()
-		}
-		p.cancel()
-		
-		wait(exp)
-	}
-	
-	func testPromise_CancelInside() {
-		let exp1 = expect()
-		let exp2 = expect(inverted: true)
-		
-		let p = Promise {
-			exp1.fulfill()
-		}
-		p.then {
-			p.cancel()
-		}
-		.then {
-			exp2.fulfill()
-		}
-		
-		waitAll([exp1, exp2])
-	}
-	
-	func testPromise_CancelAsync() {
-		let exp1 = expect()
-		let exp2 = expect(inverted: true)
-		
-		let p = Promise { resolve, reject in
-			asyncAfter {
-				resolve(200)
+			.then {
+				expectations[1].fulfill()
 			}
-		}
-		.then { value, resolve, reject in
-			XCTAssert(value == 200)
-			exp1.fulfill()
+			.finally {
+				expectations[1].fulfill()
+			}
 			
-			asyncAfter {
-				resolve(())
+			asyncAfter(0.30) {
+				p.cancel()
 			}
 		}
-		.then {
-			exp2.fulfill()
-		}
-		.finally {
-			exp2.fulfill()
-		}
-		
-		asyncAfter(0.30) {
-			p.cancel()
-		}
-		
-		waitAll([exp1, exp2])
 	}
 	
 	func testPromise_Suspend() {
-		let exp = expect(inverted: true)
+		wait { expectation in
+			expectation.isInverted = true
 		
-		Promise {
-			exp.fulfill()
+			Promise {
+				expectation.fulfill()
+			}
+			.suspend()
 		}
-		.suspend()
-		
-		wait(exp)
 	}
 	
 	func testPromise_SuspendInside() {
-		let exp1 = expect()
-		let exp2 = expect(inverted: true)
+		wait(count: 2) { expectations in
+			expectations[1].isInverted = true
 		
-		let p = Promise {
-			exp1.fulfill()
+			let p = Promise {
+				expectations[0].fulfill()
+			}
+			p.then {
+				p.suspend()
+			}
+			.then {
+				expectations[1].fulfill()
+			}
 		}
-		p.then {
-			p.suspend()
-		}
-		.then {
-			exp2.fulfill()
-		}
-		
-		waitAll([exp1, exp2])
 	}
 	
 	func testPromise_SuspendResume() {
-		let exp = expect()
-		var str = ""
-		
-		let p = Promise<String> { resolve, reject in
-			asyncAfter {
-				resolve("Hello")
-			}
-		}
-		.then { value, resolve, reject in
-			str += value
+		wait { expectation in
+			var str = ""
 			
-			asyncAfter {
-				resolve(" World!")
+			let p = Promise<String> { resolve, reject in
+				asyncAfter {
+					resolve("Hello")
+				}
+			}
+			.then { value, resolve, reject in
+				str += value
+				
+				asyncAfter {
+					resolve(" World!")
+				}
+			}
+			.then { (value: String) -> Void in
+				str += value
+				XCTAssert(str == "Hello World!")
+				expectation.fulfill()
+			}
+			
+			asyncAfter(0.3) {
+				p.suspend()
+			}
+			
+			asyncAfter(0.75) {
+				p.resume()
 			}
 		}
-		.then { (value: String) -> Void in
-			str += value
-			XCTAssert(str == "Hello World!")
-			exp.fulfill()
-		}
-		
-		asyncAfter(0.3) {
-			p.suspend()
-		}
-		
-		asyncAfter(0.75) {
-			p.resume()
-		}
-		
-		wait(exp)
 	}
 	
 	func testPromise_Async() {
-		let exp = expect()
-		
-		async<Int> {
-			exp.fulfill()
-			return 200
+		wait { expectation in
+			async<Int> {
+				expectation.fulfill()
+				return 200
+			}
 		}
-		
-		wait(exp)
 	}
 	
 	func testPromise_AwaitSync() {
-		let exp = expect()
-		
-		do {
-			let text = try Promise { resolve, reject in
-				asyncAfter {
-					resolve("Hello")
-				}
-			}.await()
-			
-			XCTAssert(text == "Hello")
-			exp.fulfill()
+		wait { expectation in
+			do {
+				let text = try Promise { resolve, reject in
+					asyncAfter {
+						resolve("Hello")
+					}
+				}.await()
+				
+				XCTAssert(text == "Hello")
+				expectation.fulfill()
+			}
+			catch {
+				print(error)
+			}
 		}
-		catch {
-			print(error)
-		}
-		
-		wait(exp)
 	}
 	
 	func testPromise_AwaitAsync() {
-		let exp = expect()
-		
-		async {
-			let text = try async { resolve, reject in
-				asyncAfter {
-					resolve("Hello")
-				}
-			}.await()
-			
-			XCTAssert(text == "Hello")
-			exp.fulfill()
+		wait { expectation in
+			async {
+				let text = try async { resolve, reject in
+					asyncAfter {
+						resolve("Hello")
+					}
+				}.await()
+				
+				XCTAssert(text == "Hello")
+				expectation.fulfill()
+			}
+			.catch {
+				print($0)
+			}
 		}
-		.catch {
-			print($0)
-		}
-		
-		wait(exp)
 	}
 	
 	/// Load avatars of first 30 GitHub users
 	func testPromise_SampleThen() {
-		let exp = expect()
+		wait(timeout: 4) { expectation in
 		
-		fetch("https://api.github.com/users")
-		.then { usersData in
-			try JSONDecoder().decode([User].self, from: usersData)
-		}
-		.then { users -> Promise<Array<Data>> in
-			guard users.count > 0 else {
-				throw "Users list is empty"
+			fetch("https://api.github.com/users")
+			.then { usersData in
+				try JSONDecoder().decode([User].self, from: usersData)
 			}
-			return Promise.all(
-				users
-				.map { $0.avatar_url }
-				.map { fetch($0) }
-			)
+			.then { users -> Promise<Array<Data>> in
+				guard users.count > 0 else {
+					throw "Users list is empty"
+				}
+				return Promise.all(
+					users
+					.map { $0.avatar_url }
+					.map { fetch($0) }
+				)
+			}
+			.then { imagesData in
+				imagesData.map { NSImage(data: $0) }
+			}
+			.then(.main) { images in
+				XCTAssert(DispatchQueue.current == DispatchQueue.main)
+				XCTAssert(images.count == 30)
+				expectation.fulfill()
+			}
+			.catch { error in
+				print("Error: \(error)")
+			}
 		}
-		.then { imagesData in
-			imagesData.map { NSImage(data: $0) }
-		}
-		.then(.main) { images in
-			XCTAssert(DispatchQueue.current == DispatchQueue.main)
-			XCTAssert(images.count == 30)
-			exp.fulfill()
-		}
-		.catch { error in
-			print("Error: \(error)")
-		}
-		
-		wait(exp, timeout: 4)
 	}
 	
 	func testPromise_SampleAwait() {
-		let exp = expect()
+		wait(timeout: 4) { expectation in
 		
-		async {
-			let usersData = try fetch("https://api.github.com/users").await()
-			
-			let users = try async { try JSONDecoder().decode([User].self, from: usersData) }.await()
-			guard users.count > 0 else {
-				throw "Users list is empty"
+			async {
+				let usersData = try fetch("https://api.github.com/users").await()
+				
+				let users = try async { try JSONDecoder().decode([User].self, from: usersData) }.await()
+				guard users.count > 0 else {
+					throw "Users list is empty"
+				}
+				
+				let imagesData = try async.all(
+					users
+						.map { $0.avatar_url }
+						.map { fetch($0) }
+				).await()
+				
+				let images = try async { imagesData.map { NSImage(data: $0) } }.await()
+				
+				async(.main) {
+					XCTAssert(DispatchQueue.current == DispatchQueue.main)
+					XCTAssert(images.count == 30)
+					expectation.fulfill()
+				}
 			}
-			
-			let imagesData = try async.all(
-				users
-					.map { $0.avatar_url }
-					.map { fetch($0) }
-			).await()
-			
-			let images = try async { imagesData.map { NSImage(data: $0) } }.await()
-			
-			async(.main) {
-				XCTAssert(DispatchQueue.current == DispatchQueue.main)
-				XCTAssert(images.count == 30)
-				exp.fulfill()
+			.catch { error in
+				print("Error: \(error)")
 			}
 		}
-		.catch { error in
-			print("Error: \(error)")
-		}
-		
-		wait(exp, timeout: 4)
 	}
 }
