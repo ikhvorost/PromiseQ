@@ -755,7 +755,7 @@ final class PromiseLiteTests: XCTestCase {
 			async {
 				let usersData = try fetch("https://api.github.com/users").await()
 				
-				let users = try async { try JSONDecoder().decode([User].self, from: usersData) }.await()
+				let users = try JSONDecoder().decode([User].self, from: usersData)
 				guard users.count > 0 else {
 					throw "Users list is empty"
 				}
@@ -766,7 +766,7 @@ final class PromiseLiteTests: XCTestCase {
 						.map { fetch($0) }
 				).await()
 				
-				let images = try async { imagesData.map { NSImage(data: $0) } }.await()
+				let images = imagesData.map { NSImage(data: $0) }
 				
 				async(.main) {
 					XCTAssert(DispatchQueue.current == DispatchQueue.main)

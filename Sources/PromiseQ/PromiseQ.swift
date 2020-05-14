@@ -1,6 +1,5 @@
 //
 // PromiseQ
-// Copyright 2020 Iurii Khvorost <iurii.khvorost@gmail.com>. All rights reserved.
 //
 //  Created by Iurii Khvorost <iurii.khvorost@gmail.com> on 2020/04/01.
 //  Copyright © 2020 Iurii Khvorost. All rights reserved.
@@ -27,10 +26,43 @@
 
 import Foundation
 
+private extension DispatchSemaphore {
+	static func Lock() -> DispatchSemaphore {
+		return DispatchSemaphore(value: 0)
+	}
+	
+	static func Mutex() -> DispatchSemaphore {
+		return DispatchSemaphore(value: 1)
+	}
+}
 
 private class Monitor {
-	var cancelled = false
-	var semaphore: DispatchSemaphore?
+	@Atomic private var cancelled = false
+	@Atomic private var semaphore: DispatchSemaphore?
+	
+	var isCancelled: Bool {
+		get { cancelled }
+	}
+	
+	func cancel() {
+		cancelled = true
+	}
+	
+	func lock() {
+		guard semaphore == nil else {
+			return
+		}
+		semaphore = DispatchSemaphore.Lock()
+	}
+	
+	func wait() {
+		semaphore?.wait()
+	}
+	
+	func unlock() {
+		semaphore?.signal()
+		semaphore = nil
+	}
 }
 
 /// Alias for Promise.
@@ -59,7 +91,7 @@ public struct Promise<T> {
 	
 	private let f: (@escaping (Result<T, Error>) -> Void) -> Void
 	private let autoRun: DispatchWorkItem
-	private var monitor: Monitor
+	private let monitor: Monitor
 	
 	private init(_ monitor: Monitor, f: @escaping (@escaping (Result<T, Error>) -> Void) -> Void) {
 		self.f = f
@@ -150,13 +182,13 @@ public struct Promise<T> {
 	}
 
 	private static func exec(_ queue: DispatchQueue, monitor: Monitor, f: @escaping () -> Void) {
-		guard !monitor.cancelled else {
+		guard !monitor.isCancelled else {
 			return
 		}
 		
-		monitor.semaphore?.wait()
+		monitor.wait()
 		
-		guard !monitor.cancelled else {
+		guard !monitor.isCancelled else {
 			return
 		}
 		
@@ -431,10 +463,7 @@ public struct Promise<T> {
 	///
 	/// - SeeAlso: `resume()`
 	public func suspend() {
-		guard monitor.semaphore == nil else {
-			return
-		}
-		monitor.semaphore = DispatchSemaphore(value: 0)
+		monitor.lock()
 	}
 	
 	/// Resumes the promise or the promise chain.
@@ -455,8 +484,7 @@ public struct Promise<T> {
 	///
 	/// - SeeAlso: `suspend()`
 	public func resume() {
-		monitor.semaphore?.signal()
-		monitor.semaphore = nil
+		monitor.unlock()
 	}
 	
 	/// Cancels execution of the promise or the promise chain.
@@ -468,7 +496,7 @@ public struct Promise<T> {
 	///
 	/// Cancelation does not affect the execution of the promise that has already begun it cancels execution of next promises in the chain.
 	public func cancel() {
-		monitor.cancelled = true
+		monitor.cancel()
 	}
 	
 	/// Returns a result of the promise synchronously or throws an error.
@@ -498,18 +526,18 @@ public struct Promise<T> {
 	public func await() throws -> T {
 		var result: T?
 		var error: Error?
-		let ready = DispatchSemaphore(value: 0)
+		let lock = DispatchSemaphore.Lock()
 		
 		self.then {
 			result = $0
-			ready.signal()
+			lock.signal()
 		}
 		.catch {
 			error = $0
-			ready.signal()
+			lock.signal()
 		}
 		
-		ready.wait()
+		lock.wait()
 		
 		if let e = error {
 			throw e
@@ -578,21 +606,21 @@ public struct Promise<T> {
 	/// - SeeAlso: `Promise.race()`
 	public static func all(settled: Bool = false, _ promises:[Promise<T>]) -> Promise<Array<T>> {
 		var results = [Int : T]()
-		let mutex = DispatchSemaphore(value: 1)
+		let mutex = DispatchSemaphore.Mutex()
 		
 		return Promise<Array<T>> { resolve, reject in
 			
 			func setResult(_ i: Int, value: T) {
-				
 				mutex.wait()
+				defer {
+					mutex.signal()
+				}
 				
 				results[i] = value
 				if results.count == promises.count {
 					let values = results.keys.sorted().map { results[$0]! }
 					resolve(values)
 				}
-				
-				mutex.signal()
 			}
 			
 			for i in 0..<promises.count {
