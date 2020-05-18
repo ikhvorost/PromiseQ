@@ -6,128 +6,231 @@
 [![Build Status](https://travis-ci.org/ikhvorost/PromiseQ.svg?branch=master)](https://travis-ci.org/ikhvorost/PromiseQ)
 [![codecov](https://codecov.io/gh/ikhvorost/PromiseQ/branch/master/graph/badge.svg)](https://codecov.io/gh/ikhvorost/PromiseQ)
 
-Fast, powerful and lightweight implementation of Promises on Swift.
+Fast, powerful and lightweight implementation of Promises for Swift.
 
-- [Features](#features)		
-- [Basic Usage](#basic-usage)		
+- [Features](#features)
+- [Basic Usage](#basic-usage)
+	- [`Promise`](#promise)
+	- [`then`](#then)
+	- [`catch`](#catch)
+	- [`finally`](#finally)
+- [Advanced Usage](#advanced-usage)
+	- [`async/await`](#async/await)
+	- [`suspend/resume`](#suspend/resume)
+	- [`cancel`](#cancel)
 - [Sample](#sample)
-- [Documentation](#documentation)
 - [Installation](#installation)
 - [License](#license)
 
 ## Features
 
-### Fast
-Promise's executors (closures) are called synchronously one by one if they are on the same queue and asynchronous otherwise that gives additional speed to run.
+- ### High-performance
+Promises closures are called synchronously one by one if they are on the same queue and asynchronous otherwise.
 
-### Lightweight
-Whole implementation consists of less than three hundred lines of code.
+- ### Lightweight
+Whole implementation consists on several hundred lines of code.
 
-### Memory management
-PromiseQ is based on `struct` and a stack of callbacks that removes problems with reference cycles etc.
+- ### Memory safe
+PromiseQ is based on `struct` and a stack of callbacks that removes many problems of memory management such as reference cycles etc.
 
-### Standard API
-Based on JavaScript [Promises/A+](https://promisesaplus.com/) spec and it also includes 5 standard static methods: `Promise.all/all(settled:)`, `Promise.race`, `Promise.resolve/reject`.
+- ### Standard API
+Based on JavaScript [Promises/A+](https://promisesaplus.com/) spec, supports `async/await` and it also includes standard static methods: `Promise.all/all(settled:)`, `Promise.race`, `Promise.resolve/reject`.
 
-### Suspension
+- ### Suspension
 It is an additional useful feature to `suspend` the execution of promises and `resume` them later. Suspension does not affect the execution of a promise that has already begun it stops execution of next promises.
 
-### Cancelation
+- ### Cancelation
 It is possible to `cancel` all queued promises at all in case to stop an asynchronous logic. Cancellation does not affect the execution of a promise that has already begun it cancels execution of the next promises.
 
 ## Basic Usage
 
-You can use promises in simple and convenient synchronous way:
+### `Promise`
+
+Promise is a generic type that represents an asynchronous operation and you can create it in a simple way with a closure e.g.:
 
 ``` swift
 Promise {
 	try String(contentsOfFile: file)
 }
-.then { text in
-	print(text)
-}
-.catch { error in
-	print(error)
-}
 ```
 
-By default all promises executors are called on global default queue - `DispatchQueue.global()` but you can also specify a needed queue to run e.g:
+The provided closure is called asynchronously after the promise is created. By default the closure runs on the global default queue `DispatchQueue.global()` but you can also specify a needed queue to run:
 
 ``` swift
-Promise {
-	try String(contentsOfFile: file)
-}
-.then(.main) { text in
-	self.label?.text = text // Runs on the main queue
-}
-.catch { error in
-	print(error)
+Promise(.main) {
+	self.label.text = try String(contentsOfFile: file) // Runs on the main queue
 }
 ```
 
-Use `resolve/reject` callbacks to work with a promise asynchronously:
+The promise can be resolved when the closure returns a value or rejected when the closure throws an error.
+
+Also the closure can settle the promise with `resolve/reject` callbacks for asynchronous tasks:
 
 ``` swift
 Promise { resolve, reject in
 	// Will be resolved after 2 secs
 	DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-		resolve("Hello Promise!")
+		resolve("done")
 	}
 }
-.then {
-	print($0)
+```
+
+
+### `then`
+
+It takes a provided closure and returns new promise. The closure runs when the current promise is resolved, and receives the result.
+
+``` swift
+Promise {
+	try String(contentsOfFile: "file.txt")
 }
+.then { text in
+	print(text)
+}
+```
+
+In this way we can pass results through the chain of promises:
+
+``` swift
+Promise {
+	try String(contentsOfFile: "file.txt")
+}
+.then { text in
+	return text.count
+}
+.then { count in
+	print(count)
+}
+```
+
+Also the closure can return a promise and it will be injected in the promise chain:
+
+``` swift
+
+Promise {
+	return 200
+}
+.then { value in
+	Promise {
+		value / 10
+	}
+}
+.then { value in
+	print(value)
+}
+// Prints "20"
+
+```
+
+### `catch`
+
+It takes a closure and return a new promise. The closure runs when the promise is rejected, and receives the error.
+
+``` swift
+Promise {
+	try String(contentsOfFile: "nofile.txt") // Jumps to catch
+}
+.then { text in
+	print(text) // Doesn't run
+}
+.catch { error in
+	print(error.localizedDescription)
+}
+// Prints "The file `nofile.txt` couldn’t be opened because there is no such file."
+```
+
+### `finally`
+
+This always runs when the promise is settled: be it resolve or reject so it is a good handler for performing cleanup etc.
+
+``` swift
+Promise {
+	try String(contentsOfFile: "file.txt")
+}
+.finally {
+	print("Finish reading") // Always runs
+}
+.then { text in
+	print(text)
+}
+.catch { error in
+	print(error.localizedDescription)
+}
+.finally {
+	print("The end") // Always runs
+}
+```
+
+## Advanced Usage
+
+### `async/await`
+
+It's a special notation to work with promises in a more comfortable way and it’s easy to understand and use.
+
+`async` is a alias for `Promise` so you can use it to create a promise as well:
+
+``` swift
+// Returns a promise with `String` type
+func readFile(_ file: String) -> async<String> {
+	return async {
+		try String(contentsOfFile: file)
+	}
+}
+```
+
+`await()` is a function that **synchronously** waits for a result of the promise or throws an error otherwise.
+
+``` swift
+let text = try readFile("file.txt").await()
+```
+
+To avoid blocking the current queue (such as main UI queue) we can pass `await()` inside the other promise (async block) and use `catch` to handle errors as usual:
+
+``` swift
+async {
+	let text = try readFile("file.txt").await()
+	print(text)
+}
+.catch { error in
+	print(error.localizedDescription)
+}
+```
+
+### `suspend/resume`
+
+`suspend()` temporarily suspends a promise. Suspension does not affect the execution of the current promise that has already begun it stops execution of next promises in the chain. The promise can continue executing at a later time with `resume()`.
+
+``` swift
+let promise = Promise {
+	String(contentsOfFile: file)
+}
+promise.suspend()
+...
+// Later
+promise.resume()
+```
+
+### `cancel`
+
+Cancels execution of the promise. Cancelation does not affect the execution of the promise that has already begun it cancels execution of next promises in the chain.
+
+``` swift
+let promise = Promise {
+	String(contentsOfFile: file) // Never run
+}
+.then { text in
+	print(text) // Never run
+}
+promise.cancel()
 ```
 
 ## Sample
 
-Fetch avatars of first GitHub users.
+There are to variants of code to fetch avatars of first 30 GitHub users that use [`fetch(path:String)`](fetch.md) utility function and [`User`](fetch.md) struct to parse a json response.
+
+Using `then`:
 
 ``` swift
-/// String errors
-extension String : LocalizedError {
-	public var errorDescription: String? { return self }
-}
-
-/// GitHub user fields
-struct User : Codable {
-	let login: String
-	let avatar_url: String
-}
-
-/// Utility function to fetch data by a path
-func fetch(_ path: String) -> Promise<Data> {
-	Promise { resolve, reject in
-		guard let url = URL(string: path) else {
-			reject("Bad path")
-			return
-		}
-
-		let request = URLRequest(url: url)
-		URLSession.shared.dataTask(with: request) { data, response, error in
-			guard error == nil else {
-				reject(error!)
-				return
-			}
-
-			if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-				reject("HTTP \(http.statusCode)")
-				return
-			}
-
-			guard let data = data else {
-				reject("No Data")
-				return
-			}
-
-			resolve(data)
-		}
-		.resume()
-	}
-}
-
-// Promise chain
-
 fetch("https://api.github.com/users")
 .then { data in
 	try JSONDecoder().decode([User].self, from: data)
@@ -154,9 +257,33 @@ fetch("https://api.github.com/users")
 }
 ```
 
-## Documentation
+Using `async/await`:
 
-TDB
+``` swift
+async {
+	let usersData = try fetch("https://api.github.com/users").await()
+
+	let users = try JSONDecoder().decode([User].self, from: usersData)
+	guard users.count > 0 else {
+		throw "Users list is empty"
+	}
+
+	let imagesData = try async.all(
+		users
+			.map { $0.avatar_url }
+			.map { fetch($0) }
+	).await()
+
+	let images = imagesData.map { NSImage(data: $0) }
+
+	async(.main) { // Main queue
+		print(images.count)
+	}
+}
+.catch { error in
+	print("Error: \(error)")
+}
+```
 
 ## Installation
 
@@ -168,13 +295,13 @@ For Swift packages:
 
 ``` swift
 dependencies: [
-    .package(url: "https://github.com/ikhvorost/PromiseQ.git", from: "1.0")
+    .package(url: "https://github.com/ikhvorost/PromiseQ.git", from: "1.0.0")
 ]
 ```
 
 ### Manual
 
-Just copy [PromiseQ.swift](Sources/PromiseQ/PromiseQ.swift) file to your project.
+Just copy source files to your project.
 
 ## License
 

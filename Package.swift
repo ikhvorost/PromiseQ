@@ -2,7 +2,7 @@
 
 import PackageDescription
 
-let package = 	Package(
+let package = Package(
     name: "PromiseQ",
 	platforms: [
         .iOS(.v8),

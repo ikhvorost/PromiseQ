@@ -1,5 +1,5 @@
 //
-// PromiseQ
+//  PromiseQ
 //
 //  Created by Iurii Khvorost <iurii.khvorost@gmail.com> on 2020/04/01.
 //  Copyright © 2020 Iurii Khvorost. All rights reserved.
@@ -86,7 +86,7 @@ private class Monitor {
 /// - SeeAlso: `Promise.await()`.
 public typealias async = Promise
 
-/// Promise represents an asynchronous operation that can be chained.
+/// Represents an asynchronous operation that can be chained.
 public struct Promise<T> {
 	
 	private let f: (@escaping (Result<T, Error>) -> Void) -> Void
@@ -468,7 +468,7 @@ public struct Promise<T> {
 	
 	/// Resumes the promise or the promise chain.
 	///
-	/// Resume continues executiing the promise or the promise chain.
+	/// Resume continues executing the promise or the promise chain.
 	///
 	///		// Suspended promise
 	///		let p = Promise {
