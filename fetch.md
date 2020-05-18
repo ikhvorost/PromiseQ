@@ -1,4 +1,4 @@
-fetch() is utility function to load data over HTTP by a path and it returns a promise.
+`fetch()` is utility function to load data over HTTP by a path and it returns a promise.
 
 ``` swift
 /// String errors

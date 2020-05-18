@@ -15,8 +15,8 @@ Fast, powerful and lightweight implementation of Promises for Swift.
 	- [`catch`](#catch)
 	- [`finally`](#finally)
 - [Advanced Usage](#advanced-usage)
-	- [`async/await`](#async/await)
-	- [`suspend/resume`](#suspend/resume)
+	- [`async/await`](#asyncawait)
+	- [`suspend/resume`](#suspendresume)
 	- [`cancel`](#cancel)
 - [Sample](#sample)
 - [Installation](#installation)
@@ -24,22 +24,22 @@ Fast, powerful and lightweight implementation of Promises for Swift.
 
 ## Features
 
-- ### High-performance
+### High-performance
 Promises closures are called synchronously one by one if they are on the same queue and asynchronous otherwise.
 
-- ### Lightweight
+### Lightweight
 Whole implementation consists on several hundred lines of code.
 
-- ### Memory safe
+### Memory safe
 PromiseQ is based on `struct` and a stack of callbacks that removes many problems of memory management such as reference cycles etc.
 
-- ### Standard API
+### Standard API
 Based on JavaScript [Promises/A+](https://promisesaplus.com/) spec, supports `async/await` and it also includes standard static methods: `Promise.all/all(settled:)`, `Promise.race`, `Promise.resolve/reject`.
 
-- ### Suspension
+### Suspension
 It is an additional useful feature to `suspend` the execution of promises and `resume` them later. Suspension does not affect the execution of a promise that has already begun it stops execution of next promises.
 
-- ### Cancelation
+### Cancelation
 It is possible to `cancel` all queued promises at all in case to stop an asynchronous logic. Cancellation does not affect the execution of a promise that has already begun it cancels execution of the next promises.
 
 ## Basic Usage
@@ -216,10 +216,10 @@ Cancels execution of the promise. Cancelation does not affect the execution of t
 
 ``` swift
 let promise = Promise {
-	String(contentsOfFile: file) // Never run
+	String(contentsOfFile: file) // Never runs
 }
 .then { text in
-	print(text) // Never run
+	print(text) // Never runs
 }
 promise.cancel()
 ```
@@ -231,26 +231,25 @@ There are to variants of code to fetch avatars of first 30 GitHub users that use
 Using `then`:
 
 ``` swift
-fetch("https://api.github.com/users")
+fetch("https://api.github.com/users") // Load json with users
 .then { data in
-	try JSONDecoder().decode([User].self, from: data)
+	try JSONDecoder().decode([User].self, from: data) // Parse json
 }
 .then { users -> Promise<Array<Data>> in
 	guard users.count > 0 else {
 		throw "Users list is empty"
 	}
-	return Promise.all(
+	return Promise.all( // Load avatars of all users
 		users
 		.map { $0.avatar_url }
 		.map { fetch($0) }
 	)
 }
-.then { results in // Array of Data
-	results.map { UIImage(data: $0) }
+.then { results in
+	results.map { UIImage(data: $0) } // Create array of images
 }
-.then(.main) { images in // Array of UIImage
-	// Main queue
-	print(images.count)
+.then(.main) { images in
+	print(images.count) // Print a count of images on the main queue
 }
 .catch { error in
 	print("Error: \(error)")
@@ -261,23 +260,23 @@ Using `async/await`:
 
 ``` swift
 async {
-	let usersData = try fetch("https://api.github.com/users").await()
+	let usersData = try fetch("https://api.github.com/users").await() // Load json with users
 
-	let users = try JSONDecoder().decode([User].self, from: usersData)
+	let users = try JSONDecoder().decode([User].self, from: usersData) // Parse json
 	guard users.count > 0 else {
 		throw "Users list is empty"
 	}
 
-	let imagesData = try async.all(
+	let imagesData = try async.all( // Load avatars of all users
 		users
 			.map { $0.avatar_url }
 			.map { fetch($0) }
 	).await()
 
-	let images = imagesData.map { NSImage(data: $0) }
+	let images = imagesData.map { UIImage(data: $0) } // Create array of images
 
-	async(.main) { // Main queue
-		print(images.count)
+	async(.main) {
+		print(images.count) // Print a count of images on the main queue
 	}
 }
 .catch { error in
