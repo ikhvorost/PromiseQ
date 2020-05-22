@@ -3,5 +3,5 @@ osx_image: xcode11.4
 language: swift
 script: swift test --enable-code-coverage
 after_success:
-    - xcrun llvm-cov export -format="lcov" .build/debug/PromiseQPackageTests.xctest/contents/macos/PromiseQPackageTests -instr-profile .build/debug/codecov/default.profdata > info.lcov
+    - xcrun llvm-cov export --ignore-filename-regex=Tests -format="lcov" .build/debug/PromiseQPackageTests.xctest/contents/macos/PromiseQPackageTests -instr-profile .build/debug/codecov/default.profdata > info.lcov --ignore-filename-regex
     - bash <(curl -s https://codecov.io/bash)
