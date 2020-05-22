@@ -1,5 +1,5 @@
 os: osx
 osx_image: xcode11.4
 language: swift
-script: xcodebuild -scheme PromiseQ -enableCodeCoverage YES test
+script: swift test --enable-code-coverage
 after_success: bash <(curl -s https://codecov.io/bash)
