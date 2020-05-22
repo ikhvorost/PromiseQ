@@ -52,7 +52,7 @@ private class Monitor {
 		guard semaphore == nil else {
 			return
 		}
-		semaphore = DispatchSemaphore.Lock()
+		semaphore = .Lock()
 	}
 	
 	func wait() {

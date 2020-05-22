@@ -77,12 +77,7 @@ func fetch(_ path: String) -> Promise<Data> {
 final class PromiseLiteTests: XCTestCase {
 	
 	func wait(count: Int, timeout: TimeInterval = 1, name: String = #function, closure: ([XCTestExpectation]) -> Void) {
-		var expectations = [XCTestExpectation]()
-		
-		for _ in 0..<count {
-			let exp = expectation(description: name)
-			expectations.append(exp)
-		}
+		let expectations = (0..<count).map { _ in expectation(description: name) }
 		
 		closure(expectations)
 		
@@ -225,13 +220,13 @@ final class PromiseLiteTests: XCTestCase {
 	func testPromise_ThrowCatch() {
 		wait { expectation in
 			Promise {
-				throw "Some Error"
+				throw "Error"
 			}
 			.then {
 				XCTFail()
 			}
 			.catch { error in
-				XCTAssert(error.localizedDescription == "Some Error")
+				XCTAssert(error.localizedDescription == "Error")
 				expectation.fulfill()
 			}
 		}
@@ -295,7 +290,7 @@ final class PromiseLiteTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_SyncThen() {
+	func testPromise_Then() {
 		wait { expectation in
 			Promise {
 				return "Hello"
@@ -303,6 +298,28 @@ final class PromiseLiteTests: XCTestCase {
 			.then {
 				XCTAssert($0 == "Hello")
 				expectation.fulfill()
+			}
+		}
+	}
+	
+	func testPromise_ThenThrow() {
+		wait(count: 3) { expectations in
+			expectations[1].isInverted = true
+			
+			Promise {
+				return "Hello"
+			}
+			.then { (value) -> Void in
+				XCTAssert(value == "Hello")
+				expectations[0].fulfill()
+				throw "Error"
+			}
+			.then {
+				expectations[1].fulfill()
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Error")
+				expectations[2].fulfill()
 			}
 		}
 	}
@@ -341,6 +358,24 @@ final class PromiseLiteTests: XCTestCase {
 			.then {
 				XCTAssert($0 == 5)
 				expectation.fulfill()
+			}
+		}
+	}
+	
+	func testPromise_ThenReject() {
+		wait { expectation in
+			expectation.isInverted = true
+			
+			Promise.resolve(404)
+			.then { (value: Int, resolve: (Int)->Void, reject) in
+				if value == 404 {
+					reject("Error")
+				}
+				resolve(value)
+			}
+			.then { (value: Int , resolve: (Int)->Void, reject) in
+				expectation.fulfill()
+				resolve(value)
 			}
 		}
 	}
@@ -388,19 +423,62 @@ final class PromiseLiteTests: XCTestCase {
 		}
 	}
 
-	func testPromise_ThenSyncPromise() {
+	func testPromise_ThenPromise() {
 		wait { expectation in
 			Promise {
 				return 200
 			}
 			.then { value in
-				Promise {
-					value / 10
-				}
+				Promise.resolve(value / 10)
 			}
 			.then {
 				XCTAssert($0 == 20)
 				expectation.fulfill()
+			}
+		}
+	}
+	
+	func testPromise_ThenPromiseThrow() {
+		wait(count:2) { expectations in
+			expectations[0].isInverted = true
+			
+			Promise.resolve(200)
+			.then { (value) -> Promise<Int> in
+				if value == 200 {
+					throw "Error"
+				}
+				return Promise.resolve(value / 10)
+			}
+			.then { (value) -> Promise<Int> in
+				expectations[0].fulfill() // Must be skipped
+				return Promise.resolve(value)
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Error")
+				expectations[1].fulfill()
+			}
+		}
+	}
+	
+	func testPromise_ThenPromiseReject() {
+		wait(count:2) { expectations in
+			expectations[0].isInverted = true
+			
+			Promise.resolve(200)
+			.then { value in
+				Promise<Int> {
+					if value == 200 {
+						throw "Error"
+					}
+					return value / 10
+				}
+			}
+			.then { value in
+				expectations[0].fulfill() // Must be skipped
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Error")
+				expectations[1].fulfill()
 			}
 		}
 	}
@@ -664,6 +742,7 @@ final class PromiseLiteTests: XCTestCase {
 			
 			asyncAfter(0.3) {
 				p.suspend()
+				p.suspend() // Should be skipped
 			}
 			
 			asyncAfter(0.75) {
@@ -672,16 +751,39 @@ final class PromiseLiteTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_Async() {
+	func testPromise_SuspendCancel() {
 		wait { expectation in
-			async<Int> {
-				expectation.fulfill()
+			expectation.isInverted = true
+			
+			let p = Promise {
 				return 200
+			}
+			.then {
+				XCTAssert($0 == 200)
+				expectation.fulfill()
+			}
+			
+			p.suspend()
+			
+			asyncAfter {
+				p.cancel()
+			}
+			
+			asyncAfter(0.5) {
+				p.resume()
 			}
 		}
 	}
 	
-	func testPromise_AwaitSync() {
+	func testPromise_Async() {
+		wait { expectation in
+			async {
+				expectation.fulfill()
+			}
+		}
+	}
+	
+	func testPromise_DoAwait() {
 		wait { expectation in
 			do {
 				let text = try Promise { resolve, reject in
@@ -699,7 +801,7 @@ final class PromiseLiteTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AwaitAsync() {
+	func testPromise_AsyncAwait() {
 		wait { expectation in
 			async {
 				let text = try async { resolve, reject in
@@ -713,6 +815,24 @@ final class PromiseLiteTests: XCTestCase {
 			}
 			.catch {
 				print($0)
+			}
+		}
+	}
+	
+	func testPromise_AsyncAwaitThrow() {
+		wait(count: 2) { expectations in
+			expectations[0].isInverted = true
+			
+			async {
+				try async<Void> { resolve, reject in
+					reject("Error")
+				}.await()
+				
+				expectations[0].fulfill() // Must be skipped
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Error")
+				expectations[1].fulfill()
 			}
 		}
 	}
