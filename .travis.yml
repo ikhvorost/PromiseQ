@@ -2,4 +2,4 @@ os: osx
 osx_image: xcode11.4
 language: swift
 script: swift test --enable-code-coverage
-after_success: bash <(curl -s https://codecov.io/bash) -f .build/debug/codecov/PromiseQ.json
+after_success: bash <(curl -s https://codecov.io/bash) -f .build/debug/codecov/default.profdata
