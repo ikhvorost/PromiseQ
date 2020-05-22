@@ -2,4 +2,6 @@ os: osx
 osx_image: xcode11.4
 language: swift
 script: swift test --enable-code-coverage
-after_success: bash <(curl -s https://codecov.io/bash) -f .build/debug/codecov/default.profdata
+after_success:
+    - llvm-cov export -format="lcov" .build/debug/PromiseQPackageTests.xctest/contents/macos/PromiseQPackageTests -instr-profile .build/debug/codecov/default.profdata > info.lcov
+    - bash <(curl -s https://codecov.io/bash)
