@@ -2,6 +2,10 @@
 import XCTest
 @testable import PromiseQ
 
+#if os(macOS)
+	typealias UIImage = NSImage
+#endif
+
 /// String errors
 extension String : LocalizedError {
 	public var errorDescription: String? { return self }
@@ -856,7 +860,7 @@ final class PromiseLiteTests: XCTestCase {
 				)
 			}
 			.then { imagesData in
-				imagesData.map { NSImage(data: $0) }
+				imagesData.map { UIImage(data: $0) }
 			}
 			.then(.main) { images in
 				XCTAssert(DispatchQueue.current == DispatchQueue.main)
@@ -886,7 +890,7 @@ final class PromiseLiteTests: XCTestCase {
 						.map { fetch($0) }
 				).await()
 				
-				let images = imagesData.map { NSImage(data: $0) }
+				let images = imagesData.map { UIImage(data: $0) }
 				
 				async(.main) {
 					XCTAssert(DispatchQueue.current == DispatchQueue.main)
