@@ -689,7 +689,7 @@ final class PromiseLiteTests: XCTestCase {
 				expectations[1].fulfill()
 			}
 			
-			asyncAfter(0.30) {
+			asyncAfter(0.4) {
 				p.cancel()
 			}
 		}
@@ -744,7 +744,7 @@ final class PromiseLiteTests: XCTestCase {
 				expectation.fulfill()
 			}
 			
-			asyncAfter(0.3) {
+			asyncAfter(0.4) {
 				p.suspend()
 				p.suspend() // Should be skipped
 			}
