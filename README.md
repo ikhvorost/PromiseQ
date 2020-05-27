@@ -14,6 +14,9 @@ Fast, powerful and lightweight implementation of Promises for Swift.
 	- [`then`](#then)
 	- [`catch`](#catch)
 	- [`finally`](#finally)
+	- [`Promise.resolve/reject`](#promise.resolvereject)
+	- [`Promise.all`](#promise.all)
+	- [`Promise.race`](#promise.race)
 - [Advanced Usage](#advanced-usage)
 	- [`async/await`](#asyncawait)
 	- [`suspend/resume`](#suspendresume)
@@ -34,7 +37,7 @@ Whole implementation consists on several hundred lines of code.
 PromiseQ is based on `struct` and a stack of callbacks that removes many problems of memory management such as reference cycles etc.
 
 ### Standard API
-Based on JavaScript [Promises/A+](https://promisesaplus.com/) spec, supports `async/await` and it also includes standard static methods: `Promise.all/all(settled:)`, `Promise.race`, `Promise.resolve/reject`.
+Based on JavaScript [Promises/A+](https://promisesaplus.com/) spec, supports `async/await` and it also includes standard methods: `Promise.all`, `Promise.race`, `Promise.resolve/reject`.
 
 ### Suspension
 It is an additional useful feature to `suspend` the execution of promises and `resume` them later. Suspension does not affect the execution of a promise that has already begun it stops execution of next promises.
@@ -159,6 +162,95 @@ Promise {
 .finally {
 	print("The end") // Always runs
 }
+```
+### `Promise.resolve/reject`
+
+These are used for compatibility e.g. when it's simple needed to return a resolved or rejected promise.
+
+`Promise.resolve` creates a resolved promise with a given value:
+
+``` swift
+Promise {
+	return 200
+}
+
+// Same as above
+Promise.resolve(200)
+```
+
+`Promise.reject` creates a rejected promise with a given error:
+
+``` swift
+Promise {
+	throw error
+}
+
+// Same as above
+Promise.reject(error)
+```
+
+### `Promise.all`
+
+It returns a promise that resolves when all listed promises from the provided array are resolved, and the array of their results becomes its result. If any of the promises is rejected, the promise returned by `Promise.all` immediately rejects with that error:
+
+``` swift
+Promise.all([
+    Promise {
+        return "Hello"
+    },
+    Promise { resolve, reject in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            resolve("World")
+        }
+    }
+])
+.then { results in
+    print(results)
+}
+// Prints ["Hello", "World"]
+```
+
+You can set `settled=true` param to make a promise that resolves when all listed promises are settled regardless of their results:
+
+``` swift
+Promise.all(settled: true, [
+    Promise<Any> { resolve, reject in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            reject(error)
+        }
+    },
+    Promise {
+        return 200
+    },
+])
+.then { results in
+    print(results)
+}
+// Prints [error, 200]
+
+```
+
+### `Promise.race`
+
+It makes a promise that waits only for the first settled promise from the given array and gets its result (or error).
+
+``` swift
+Promise.race([
+	Promise { resolve, reject in
+		DispatchQueue.main.asyncAfter(deadline: .now() + 2) { // Wait 2 secs
+			reject("Error")
+		}
+	},
+	Promise { resolve, reject in
+		DispatchQueue.main.asyncAfter(deadline: .now() + 1) { // Wait 1 sec
+			resolve(200)
+		}
+	}
+])
+.then {
+	print($0)
+}
+// Prints "200"
 ```
 
 ## Advanced Usage
