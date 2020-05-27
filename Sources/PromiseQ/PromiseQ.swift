@@ -52,7 +52,7 @@ private class Monitor {
 		guard semaphore == nil else {
 			return
 		}
-		semaphore = DispatchSemaphore.Lock()
+		semaphore = .Lock()
 	}
 	
 	func wait() {
@@ -565,7 +565,7 @@ public struct Promise<T> {
 	
 	/// Executes all promises in parallel and returns a single promise that resolves when all of the promises have been resolved or settled and returns an array of their results.
 	///
-	/// If `setteled=false` the new promise resolves when all listed promises are resolved, and the array of their results becomes its result. If any of the promises is rejected, the promise returned by Promise.all immediately rejects with that error.
+	/// If `settled=false` the new promise resolves when all listed promises are resolved, and the array of their results becomes its result. If any of the promises is rejected, the promise returned by `Promise.all` immediately rejects with that error.
 	///
 	/// 	Promise.all([
 	/// 	    Promise {
@@ -582,7 +582,7 @@ public struct Promise<T> {
 	/// 	}
 	/// 	// Prints ["Hello", "World"]
 	///
-	/// If `setteled=true` the new promise resolves when all listed promises are settled regardless of the result.
+	/// If `settled=true` the new promise resolves when all listed promises are settled regardless of the result.
 	///
 	/// 	Promise.all(settled: true, [
 	/// 	    Promise<Any> { resolve, reject in
@@ -597,7 +597,7 @@ public struct Promise<T> {
 	///		.then { results in
 	///		    print(results)
 	///		}
-	///		// Prints [<error description>, 200]
+	///		// Prints [error, 200]
 	///
 	///	- Parameters:
 	///		- settled: Defaults to `false`.

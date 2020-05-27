@@ -1,5 +1,7 @@
 os: osx
 osx_image: xcode11.4
 language: swift
-script: xcodebuild -scheme PromiseQ -enableCodeCoverage YES test
-after_success: bash <(curl -s https://codecov.io/bash)
+script: swift test --enable-code-coverage
+after_success:
+    - xcrun llvm-cov export -format="lcov" .build/debug/PromiseQPackageTests.xctest/contents/macos/PromiseQPackageTests -instr-profile .build/debug/codecov/default.profdata -ignore-filename-regex='Tests' > info.lcov
+    - bash <(curl -s https://codecov.io/bash)
