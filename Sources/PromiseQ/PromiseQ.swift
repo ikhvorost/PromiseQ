@@ -77,8 +77,9 @@ private func execute(_ queue: DispatchQueue, monitor: Monitor, f: @escaping () -
 /// - SeeAlso: `Promise.await()`.
 public typealias async = Promise
 
-public enum PromiseError: Error {
-	case timedOut
+public enum PromiseError: String, LocalizedError {
+	case timedOut = "The promise timed out."
+	public var errorDescription: String? { return rawValue }
 }
 
 /// Represents an asynchronous operation that can be chained.
