@@ -280,8 +280,8 @@ final class PromiseLiteTests: XCTestCase {
 			Promise<Int> { resolve, reject in
 				asyncAfter {
 					reject("Error")
-					// Skipped
-					resolve(200)
+					
+					resolve(200) // Must be skipped
 				}
 			}
 			.then { value in
@@ -334,9 +334,7 @@ final class PromiseLiteTests: XCTestCase {
 				asyncAfter {
 					resolve("Hello")
 					
-					// Skipped
-					resolve("World")
-					reject("Some Error")
+					reject("Error") // Must be skipped
 				}
 			}
 			.then {
@@ -356,12 +354,17 @@ final class PromiseLiteTests: XCTestCase {
 					resolve("Hello")
 				}
 			}
-			.then { str, resolve, reject in
+			.then { (str, resolve: (Int)->Void, reject) in
 				resolve(str.count)
+				
+				reject("Error") // Must be skipped
 			}
 			.then {
 				XCTAssert($0 == 5)
 				expectation.fulfill()
+			}
+			.catch { error in
+				XCTFail()
 			}
 		}
 	}
@@ -407,15 +410,15 @@ final class PromiseLiteTests: XCTestCase {
 			Promise<Int> { resolve, reject in
 				asyncAfter {
 					reject("Error")
-					// Skipped
-					resolve(200)
+					
+					resolve(200) // Must be skipped
 				}
 			}
 			.finally {
 				expectations[0].fulfill()
 			}
 			.then { value in
-				XCTFail()
+				XCTFail() // Must be skipped
 			}
 			.catch { error in
 				XCTAssert(error.localizedDescription == "Error")
@@ -500,6 +503,87 @@ final class PromiseLiteTests: XCTestCase {
 			.then {
 				XCTAssert($0 == 20)
 				expectation.fulfill()
+			}
+		}
+	}
+	
+	func testPromise_TimeOutSync() {
+		wait(count: 4) { expectations in
+			Promise(timeout:0.1) {
+				Thread.sleep(forTimeInterval: 0.3)
+			}
+			.then {
+				XCTFail()
+			}
+			.catch { error in
+				if case PromiseError.timedOut = error {
+					expectations[0].fulfill()
+				}
+			}
+			.then(timeout: 0.1) {
+				Thread.sleep(forTimeInterval: 0.3)
+			}
+			.then {
+				XCTFail()
+			}
+			.catch { error in
+				if case PromiseError.timedOut = error {
+					expectations[1].fulfill()
+				}
+			}
+			.then(timeout: 0.1) {
+				Promise<Int> {
+					Thread.sleep(forTimeInterval: 0.3)
+					return 200
+				}
+			}
+			.then { value in
+				XCTFail()
+			}
+			.catch(timeout: 0.1) { error in
+				if case PromiseError.timedOut = error {
+					expectations[2].fulfill()
+				}
+				Thread.sleep(forTimeInterval: 0.3)
+			}
+			.then {
+				XCTFail()
+			}
+			.catch { error in
+				if case PromiseError.timedOut = error {
+					expectations[3].fulfill()
+				}
+			}
+		}
+	}
+	
+	func testPromise_TimeOutAsync() {
+		wait(count: 2) { expectations in
+			Promise(timeout: 0.1) { resolve, reject in
+				asyncAfter {
+					resolve(200)
+				}
+			}
+			.then { value in
+				XCTFail()
+			}
+			.catch { error in
+				if case PromiseError.timedOut = error {
+					expectations[0].fulfill()
+				}
+			}
+			.then(timeout: 0.1) { _, resolve, reject in
+				asyncAfter {
+					resolve(200)
+				}
+			}
+			.then { value in
+				XCTFail()
+			}
+			.catch { error in
+				if case PromiseError.timedOut = error {
+					expectations[1].fulfill()
+				}
 			}
 		}
 	}
@@ -645,6 +729,9 @@ final class PromiseLiteTests: XCTestCase {
 			let p = Promise {
 				expectation.fulfill()
 			}
+			.catch { error in
+				expectation.fulfill()
+			}
 			p.cancel()
 		}
 	}
@@ -746,7 +833,7 @@ final class PromiseLiteTests: XCTestCase {
 			
 			asyncAfter(0.4) {
 				p.suspend()
-				p.suspend() // Should be skipped
+				p.suspend() // Must be skipped
 			}
 			
 			asyncAfter(0.75) {

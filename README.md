@@ -376,6 +376,8 @@ async {
 }
 ```
 
+For more samples see [PromiseQTests.swift](Tests/ProiseQTests/PromiseQTests.swift).
+
 ## Installation
 
 ### Swift Package Manager (SPM)
