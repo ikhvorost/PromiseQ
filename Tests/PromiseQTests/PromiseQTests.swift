@@ -518,6 +518,7 @@ final class PromiseLiteTests: XCTestCase {
 			.catch { error in
 				if case PromiseError.timedOut = error {
 					expectations[0].fulfill()
+					print("Error: \(error.localizedDescription)")
 				}
 			}
 			.then(timeout: 0.1) {
