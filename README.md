@@ -18,6 +18,7 @@ Fast, powerful and lightweight implementation of Promises for Swift.
 	- [`Promise.all`](#promiseall)
 	- [`Promise.race`](#promiserace)
 - [Advanced Usage](#advanced-usage)
+	- [`timeout`](#timeout)
 	- [`async/await`](#asyncawait)
 	- [`suspend/resume`](#suspendresume)
 	- [`cancel`](#cancel)
@@ -254,6 +255,29 @@ Promise.race([
 ```
 
 ## Advanced Usage
+
+### `timeout:`
+
+`timeout` value allows to wait for a promise for a time interval and reject it with `PromiseError.timedOut` error, if it doesn't resolve within the given time.
+
+``` swift
+Promise(timeout: 10) { // Wait 10 secs for data
+	try loadData()
+}
+.then(timeout: 1) { data in //  Wait 1 sec for parsed data
+	try parse(data)
+}
+.catch(timeout: 1) { error in // Wait 1 sec to handle errors
+	if case PromiseError.timedOut = error {
+		print(error)
+	}
+	else {
+		handleError(error)
+	}
+}
+
+```
+
 
 ### `async/await`
 

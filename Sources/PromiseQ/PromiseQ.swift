@@ -113,6 +113,7 @@ public struct Promise<T> {
 	///
 	/// - Parameters:
 	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
+	///		- timeout: The time interval to wait for resolving a promise.
 	///		- f: The closure to be invoked on the queue that can return a value or throw an error.
 	/// - Returns: A new `Promise`
 	/// - SeeAlso: `Promise.resolve()`, `Promise.reject()`
@@ -156,6 +157,7 @@ public struct Promise<T> {
 	///
 	/// - Parameters:
 	/// 	- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
+	///		- timeout: The time interval to wait for resolving a promise.
 	///		- f: The closure to be invoked on the queue that provides the callbacks to resolve or reject the promise.
 	/// - Returns: A new `Promise`
 	@discardableResult
@@ -186,6 +188,7 @@ public struct Promise<T> {
 	///
 	///	- Parameters:
 	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
+	///		- timeout: The time interval to wait for resolving a promise.
 	///		- f: The closure to be invoked on the queue that gets a result and can return a value or throw an error.
 	///	- Returns: A new chained promise.
 	@discardableResult
@@ -233,6 +236,7 @@ public struct Promise<T> {
 	///
 	///	- Parameters:
 	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
+	///		- timeout: The time interval to wait for resolving a promise.
 	///		- f: The closure to be invoked on the queue that gets a result and can return new promise or throw an error.
 	///	- Returns: A new chained promise.
 	@discardableResult
@@ -286,6 +290,7 @@ public struct Promise<T> {
 	///
 	///	- Parameters:
 	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
+	///		- timeout: The time interval to wait for resolving a promise.
 	///		- f: The closure to be invoked on the queue that gets a result and provides the callbacks to resolve or reject the promise.
 	///	- Returns: A new chained promise.
 	@discardableResult
@@ -322,6 +327,7 @@ public struct Promise<T> {
 	///
 	///	- Parameters:
 	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
+	///		- timeout: The time interval to wait for resolving a promise.
 	///		- f: The closure to be invoked on the queue that gets an error and can throw an other error.
 	///	- Returns: A new chained promise.
 	@discardableResult
