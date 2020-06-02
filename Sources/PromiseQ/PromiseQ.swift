@@ -23,45 +23,36 @@
 //  THE SOFTWARE.
 //
 
-
 import Foundation
 
-private extension DispatchSemaphore {
-	static func Lock() -> DispatchSemaphore {
-		return DispatchSemaphore(value: 0)
-	}
-	
-	static func Mutex() -> DispatchSemaphore {
-		return DispatchSemaphore(value: 1)
-	}
+private func setTimeout<T>(timeout: TimeInterval, callback: @escaping (Result<T, Error>) -> Void) {
+	guard timeout > 0 else { return }
+	let workItem = DispatchWorkItem { callback(.failure(PromiseError.timedOut)) }
+	DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: workItem)
 }
 
-private class Monitor {
-	@Atomic private var cancelled = false
-	@Atomic private var semaphore: DispatchSemaphore?
-	
-	var isCancelled: Bool {
-		get { cancelled }
+private func isPending(_ pending: inout Bool) -> Bool {
+	guard pending else { return false}
+	pending.toggle()
+	return true
+}
+
+private func execute(_ queue: DispatchQueue, monitor: Monitor, f: @escaping () -> Void) {
+	guard !monitor.isCancelled else {
+		return
 	}
 	
-	func cancel() {
-		cancelled = true
+	monitor.wait()
+	
+	guard !monitor.isCancelled else {
+		return
 	}
 	
-	func lock() {
-		guard semaphore == nil else {
-			return
-		}
-		semaphore = .Lock()
+	if queue.label == String(cString: __dispatch_queue_get_label(nil)) {
+		f()
 	}
-	
-	func wait() {
-		semaphore?.wait()
-	}
-	
-	func unlock() {
-		semaphore?.signal()
-		semaphore = nil
+	else {
+		queue.async(execute: f)
 	}
 }
 
@@ -85,6 +76,11 @@ private class Monitor {
 ///
 /// - SeeAlso: `Promise.await()`.
 public typealias async = Promise
+
+public enum PromiseError: String, LocalizedError {
+	case timedOut = "The promise timed out."
+	public var errorDescription: String? { return rawValue }
+}
 
 /// Represents an asynchronous operation that can be chained.
 public struct Promise<T> {
@@ -117,14 +113,16 @@ public struct Promise<T> {
 	///
 	/// - Parameters:
 	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
+	///		- timeout: The time interval to wait for resolving a promise.
 	///		- f: The closure to be invoked on the queue that can return a value or throw an error.
 	/// - Returns: A new `Promise`
 	/// - SeeAlso: `Promise.resolve()`, `Promise.reject()`
 	@discardableResult
-	public init(_ queue: DispatchQueue = .global(), f: @escaping (() throws -> T)) {
+	public init(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, f: @escaping (() throws -> T)) {
 		let monitor = Monitor()
 		self.init(monitor) { callback in
-			Self.exec(queue, monitor: monitor) {
+			setTimeout(timeout: timeout, callback: callback)
+			execute(queue, monitor: monitor) {
 				do {
 					let output = try f()
 					callback(.success(output))
@@ -159,44 +157,17 @@ public struct Promise<T> {
 	///
 	/// - Parameters:
 	/// 	- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
+	///		- timeout: The time interval to wait for resolving a promise.
 	///		- f: The closure to be invoked on the queue that provides the callbacks to resolve or reject the promise.
 	/// - Returns: A new `Promise`
 	@discardableResult
-	public init(_ queue: DispatchQueue = .global(), f: @escaping ( @escaping (T) -> Void,  @escaping (Error) -> Void) -> Void) {
+	public init(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, f: @escaping ( @escaping (T) -> Void,  @escaping (Error) -> Void) -> Void) {
 		let monitor = Monitor()
 		self.init(monitor) { callback in
-			Self.exec(queue, monitor: monitor) {
-				var pending = true
-				f({ value in // resolve
-					guard pending else { return }
-					pending.toggle()
-					callback(.success(value))
-				  },
-				  { error in // reject
-					guard pending else { return }
-					pending.toggle()
-					callback(.failure(error))
-				})
+			setTimeout(timeout: timeout, callback: callback)
+			execute(queue, monitor: monitor) {
+				f( { value in callback(.success(value))}, { error in callback(.failure(error))} )
 			}
-		}
-	}
-
-	private static func exec(_ queue: DispatchQueue, monitor: Monitor, f: @escaping () -> Void) {
-		guard !monitor.isCancelled else {
-			return
-		}
-		
-		monitor.wait()
-		
-		guard !monitor.isCancelled else {
-			return
-		}
-		
-		if queue.label == String(cString: __dispatch_queue_get_label(nil)) {
-			f()
-		}
-		else {
-			queue.async(execute: f)
 		}
 	}
 	
@@ -217,16 +188,20 @@ public struct Promise<T> {
 	///
 	///	- Parameters:
 	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
+	///		- timeout: The time interval to wait for resolving a promise.
 	///		- f: The closure to be invoked on the queue that gets a result and can return a value or throw an error.
 	///	- Returns: A new chained promise.
 	@discardableResult
-	public func then<U>(_ queue: DispatchQueue = .global(), f: @escaping ((T) throws -> U)) -> Promise<U> {
+	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, f: @escaping ((T) throws -> U)) -> Promise<U> {
 		autoRun.cancel()
 		return Promise<U>(monitor) { callback in
+			setTimeout(timeout: timeout, callback: callback)
+			var pending = true
 			self.f { result in
+				guard isPending(&pending) else { return }
 				switch result {
 					case let .success(input):
-						Self.exec(queue, monitor: self.monitor) {
+						execute(queue, monitor: self.monitor) {
 							do {
 								let output = try f(input)
 								callback(.success(output))
@@ -261,16 +236,20 @@ public struct Promise<T> {
 	///
 	///	- Parameters:
 	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
+	///		- timeout: The time interval to wait for resolving a promise.
 	///		- f: The closure to be invoked on the queue that gets a result and can return new promise or throw an error.
 	///	- Returns: A new chained promise.
 	@discardableResult
-	public func then<U>(_ queue: DispatchQueue = .global(), f: @escaping ((T) throws -> Promise<U>)) -> Promise<U> {
+	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, f: @escaping ((T) throws -> Promise<U>)) -> Promise<U> {
 		autoRun.cancel()
 		return Promise<U>(monitor) { callback in
+			setTimeout(timeout: timeout, callback: callback)
+			var pending = true
 			self.f { result in
+				guard isPending(&pending) else { return }
 				switch result {
 					case let .success(value):
-						Self.exec(queue, monitor: self.monitor) {
+						execute(queue, monitor: self.monitor) {
 							do {
 								let promise = try f(value)
 								promise.autoRun.cancel()
@@ -311,29 +290,21 @@ public struct Promise<T> {
 	///
 	///	- Parameters:
 	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
+	///		- timeout: The time interval to wait for resolving a promise.
 	///		- f: The closure to be invoked on the queue that gets a result and provides the callbacks to resolve or reject the promise.
 	///	- Returns: A new chained promise.
 	@discardableResult
-	public func then<U>(_ queue: DispatchQueue = .global(), f: @escaping (T, @escaping (U) -> Void, @escaping (Error) -> Void) -> Void) -> Promise<U> {
+	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, f: @escaping (T, @escaping (U) -> Void, @escaping (Error) -> Void) -> Void) -> Promise<U> {
 		autoRun.cancel()
 		return Promise<U>(monitor) { callback in
+			setTimeout(timeout: timeout, callback: callback)
+			var pending = true
 			self.f { result in
+				guard isPending(&pending) else { return }
 				switch result {
 					case let .success(value):
-						Self.exec(queue, monitor: self.monitor) {
-							var pending = true
-							f(value,
-							  { value in // resolve
-								guard pending else { return }
-								pending.toggle()
-								callback(.success(value))
-							  },
-							  { error in // reject
-								guard pending else { return }
-								pending.toggle()
-								callback(.failure(error))
-							  }
-							)
+						execute(queue, monitor: self.monitor) {
+							f(value, { value in callback(.success(value)) }, { error in callback(.failure(error)) })
 						}
 					case let .failure(error):
 						callback(.failure(error))
@@ -356,18 +327,22 @@ public struct Promise<T> {
 	///
 	///	- Parameters:
 	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
+	///		- timeout: The time interval to wait for resolving a promise.
 	///		- f: The closure to be invoked on the queue that gets an error and can throw an other error.
 	///	- Returns: A new chained promise.
 	@discardableResult
-	public func `catch`(_ queue: DispatchQueue = .global(), f: @escaping ((Error) throws -> Void)) -> Promise<Void> {
+	public func `catch`(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, f: @escaping ((Error) throws -> Void)) -> Promise<Void> {
 		autoRun.cancel()
 		return Promise<Void>(monitor) { callback in
+			setTimeout(timeout: timeout, callback: callback)
+			var pending = true
 			self.f { result in
+				guard isPending(&pending) else { return }
 				switch result {
 					case .success:
 						callback(.success(()))
 					case let .failure(error):
-						Self.exec(queue, monitor: self.monitor) {
+						execute(queue, monitor: self.monitor) {
 							do {
 								try f(error)
 								callback(.success(()))
@@ -426,9 +401,10 @@ public struct Promise<T> {
 	public func finally(_ queue: DispatchQueue = .global(), f: @escaping (() -> Void)) -> Promise<T> {
 		autoRun.cancel()
 		return Promise<T>(monitor) { callback in
+			var pending = true
 			self.f { result in
-				Self.exec(queue, monitor: self.monitor, f: f)
-				
+				guard isPending(&pending) else { return }
+				execute(queue, monitor: self.monitor, f: f)
 				switch result {
 					case let .success(value):
 						callback(.success(value))

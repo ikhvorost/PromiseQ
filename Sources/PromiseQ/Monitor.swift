@@ -1,5 +1,5 @@
 //
-//  Atomic
+//  Monitor
 //
 //  Created by Iurii Khvorost <iurii.khvorost@gmail.com> on 2020/05/14.
 //  Copyright © 2020 Iurii Khvorost. All rights reserved.
@@ -25,7 +25,17 @@
 
 import Foundation
 
-func synchronized<T : AnyObject, U>(_ obj: T, closure: () -> U) -> U {
+extension DispatchSemaphore {
+	static func Lock() -> DispatchSemaphore {
+		return DispatchSemaphore(value: 0)
+	}
+	
+	static func Mutex() -> DispatchSemaphore {
+		return DispatchSemaphore(value: 1)
+	}
+}
+
+private func synchronized<T : AnyObject, U>(_ obj: T, closure: () -> U) -> U {
 	objc_sync_enter(obj)
 	defer {
 		objc_sync_exit(obj)
@@ -34,7 +44,7 @@ func synchronized<T : AnyObject, U>(_ obj: T, closure: () -> U) -> U {
 }
 
 @propertyWrapper
-class Atomic<T> {
+private class Atomic<T> {
     private var value: T
 
     init(wrappedValue value: T) {
@@ -49,4 +59,33 @@ class Atomic<T> {
 			synchronized(self) { value = newValue }
 		}
     }
+}
+
+class Monitor {
+	@Atomic private var cancelled = false
+	@Atomic private var semaphore: DispatchSemaphore?
+	
+	var isCancelled: Bool {
+		get { cancelled }
+	}
+	
+	func cancel() {
+		cancelled = true
+	}
+	
+	func lock() {
+		guard semaphore == nil else {
+			return
+		}
+		semaphore = .Lock()
+	}
+	
+	func wait() {
+		semaphore?.wait()
+	}
+	
+	func unlock() {
+		semaphore?.signal()
+		semaphore = nil
+	}
 }
