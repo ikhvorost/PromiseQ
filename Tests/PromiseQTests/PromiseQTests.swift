@@ -6,6 +6,7 @@ import XCTest
 	typealias UIImage = NSImage
 #endif
 
+
 /// String errors
 extension String : LocalizedError {
 	public var errorDescription: String? { return self }
@@ -49,23 +50,41 @@ class AsyncTask : Controllable {
 	}
 	
 	func suspend() {
-		print("Task: suspend")
+		dlog("Task: suspend")
 		workItem?.cancel()
 	}
 	
 	func resume() {
-		print("Task: resume")
+		dlog("Task: resume")
 		workItem = DispatchWorkItem(block: self.completion)
 		DispatchQueue.global().asyncAfter(deadline: .now() + 1, execute: workItem!)
 	}
 	
 	func cancel() {
-		print("Task: cancel")
+		dlog("Task: cancel")
 		workItem?.cancel()
 	}
 }
 
 // MARK: -
+
+let debugDateFormatter: DateFormatter = {
+	let dateFormatter = DateFormatter()
+	dateFormatter.dateFormat = "HH:mm:ss:SSS"
+	return dateFormatter
+}()
+
+func dlog(_ items: String..., icon: Character = "▶️", file: String = #file, function: String = #function, line: UInt = #line) {
+	let text = items.count > 0 ? items.joined(separator: " ") : function
+	let fileName = NSString(string: file).lastPathComponent
+	let time = debugDateFormatter.string(from: Date())
+	
+	print("[\(time)] [DLOG] \(icon) <\(fileName):\(line)>", text)
+}
+
+func dlog(error: Error, file: String = #file, function: String = #function, line: UInt = #line) {
+	dlog("Error: \(error.localizedDescription)", icon: "⚠️", file: file, function: function, line: line)
+}
 
 func asyncAfter(_ sec: Double = 0.25, closure: @escaping (() -> Void) ) {
 	DispatchQueue.global().asyncAfter(deadline: .now() + sec) {
@@ -105,7 +124,7 @@ func fetch(_ path: String) -> Promise<Data> {
 				return
 			}
 			
-			print("Fetch: `\(path)` - ", String(format: "%0.3f sec", -time.timeIntervalSinceNow))
+			dlog("Fetch: \"\(path)\"", String(format: "(%0.3f sec)", -time.timeIntervalSinceNow))
 			resolve(data)
 		}
 		task.resume()
@@ -136,6 +155,7 @@ final class PromiseLiteTests: XCTestCase {
 	
 	func testPromise_AutoRun() {
 		wait(count: 2) { expectations in
+
 			Promise {
 				XCTAssert(DispatchQueue.current == DispatchQueue.global())
 				expectations[0].fulfill()
@@ -556,7 +576,7 @@ final class PromiseLiteTests: XCTestCase {
 			.catch { error in
 				if case PromiseError.timedOut = error {
 					expectations[0].fulfill()
-					print("Error: \(error.localizedDescription)")
+					dlog(error: error)
 				}
 			}
 			.then(timeout: 0.1) {
@@ -568,6 +588,7 @@ final class PromiseLiteTests: XCTestCase {
 			.catch { error in
 				if case PromiseError.timedOut = error {
 					expectations[1].fulfill()
+					dlog(error: error)
 				}
 			}
 			.then(timeout: 0.1) {
@@ -582,6 +603,7 @@ final class PromiseLiteTests: XCTestCase {
 			.catch(timeout: 0.1) { error in
 				if case PromiseError.timedOut = error {
 					expectations[2].fulfill()
+					dlog(error: error)
 				}
 				Thread.sleep(forTimeInterval: 0.3)
 			}
@@ -591,6 +613,7 @@ final class PromiseLiteTests: XCTestCase {
 			.catch { error in
 				if case PromiseError.timedOut = error {
 					expectations[3].fulfill()
+					dlog(error: error)
 				}
 			}
 		}
@@ -609,6 +632,7 @@ final class PromiseLiteTests: XCTestCase {
 			.catch { error in
 				if case PromiseError.timedOut = error {
 					expectations[0].fulfill()
+					dlog(error: error)
 				}
 			}
 			.then(timeout: 0.1) { _, resolve, reject in
@@ -622,6 +646,7 @@ final class PromiseLiteTests: XCTestCase {
 			.catch { error in
 				if case PromiseError.timedOut = error {
 					expectations[1].fulfill()
+					dlog(error: error)
 				}
 			}
 		}
@@ -926,7 +951,7 @@ final class PromiseLiteTests: XCTestCase {
 				expectation.fulfill()
 			}
 			.catch { error in
-				print("Error: \(error.localizedDescription)")
+				dlog(error: error)
 			}
 			
 			// Fetch
@@ -978,7 +1003,7 @@ final class PromiseLiteTests: XCTestCase {
 				expectation.fulfill()
 			}
 			catch {
-				print(error)
+				dlog(error: error)
 			}
 		}
 	}
@@ -996,7 +1021,7 @@ final class PromiseLiteTests: XCTestCase {
 				expectation.fulfill()
 			}
 			.catch {
-				print($0)
+				dlog(error: $0)
 			}
 		}
 	}
@@ -1045,7 +1070,7 @@ final class PromiseLiteTests: XCTestCase {
 				expectation.fulfill()
 			}
 			.catch { error in
-				print("Error: \(error)")
+				dlog(error: error)
 			}
 		}
 	}
@@ -1075,7 +1100,7 @@ final class PromiseLiteTests: XCTestCase {
 				}
 			}
 			.catch { error in
-				print("Error: \(error)")
+				dlog(error: error)
 			}
 		}
 	}
