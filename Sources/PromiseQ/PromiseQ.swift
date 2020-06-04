@@ -32,7 +32,7 @@ private func setTimeout<T>(timeout: TimeInterval, callback: @escaping (Result<T,
 }
 
 private func isPending(_ pending: inout Bool) -> Bool {
-	guard pending else { return false}
+	guard pending else { return false }
 	pending.toggle()
 	return true
 }
@@ -80,6 +80,12 @@ public typealias async = Promise
 public enum PromiseError: String, LocalizedError {
 	case timedOut = "The promise timed out."
 	public var errorDescription: String? { return rawValue }
+}
+
+public protocol Controllable {
+	func suspend()
+	func resume()
+	func cancel()
 }
 
 /// Represents an asynchronous operation that can be chained.
@@ -161,13 +167,24 @@ public struct Promise<T> {
 	///		- f: The closure to be invoked on the queue that provides the callbacks to resolve or reject the promise.
 	/// - Returns: A new `Promise`
 	@discardableResult
-	public init(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, f: @escaping ( @escaping (T) -> Void,  @escaping (Error) -> Void) -> Void) {
+	public init(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0,
+				f: @escaping (@escaping (T) -> Void,  @escaping (Error) -> Void, inout Controllable?) -> Void) {
 		let monitor = Monitor()
 		self.init(monitor) { callback in
 			setTimeout(timeout: timeout, callback: callback)
 			execute(queue, monitor: monitor) {
-				f( { value in callback(.success(value))}, { error in callback(.failure(error))} )
+				let resolve = { (value: T) in monitor.controlled = nil; callback(.success(value)) }
+				let reject = { (error: Error) in monitor.controlled = nil; callback(.failure(error)) }
+				f(resolve, reject, &monitor.controlled )
 			}
+		}
+	}
+	
+	@discardableResult
+	public init(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0,
+				f: @escaping ( @escaping (T) -> Void,  @escaping (Error) -> Void) -> Void) {
+		self.init(queue, timeout: timeout) { resolve, reject, c in
+			f(resolve, reject)
 		}
 	}
 	
@@ -294,7 +311,8 @@ public struct Promise<T> {
 	///		- f: The closure to be invoked on the queue that gets a result and provides the callbacks to resolve or reject the promise.
 	///	- Returns: A new chained promise.
 	@discardableResult
-	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, f: @escaping (T, @escaping (U) -> Void, @escaping (Error) -> Void) -> Void) -> Promise<U> {
+	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0,
+						f: @escaping (T, @escaping (U) -> Void, @escaping (Error) -> Void, inout Controllable?) -> Void) -> Promise<U> {
 		autoRun.cancel()
 		return Promise<U>(monitor) { callback in
 			setTimeout(timeout: timeout, callback: callback)
@@ -304,12 +322,22 @@ public struct Promise<T> {
 				switch result {
 					case let .success(value):
 						execute(queue, monitor: self.monitor) {
-							f(value, { value in callback(.success(value)) }, { error in callback(.failure(error)) })
+							let resolve = { (value: U) in self.monitor.controlled = nil; callback(.success(value)) }
+							let reject = { (error: Error) in self.monitor.controlled = nil; callback(.failure(error)) }
+							f(value, resolve, reject, &self.monitor.controlled)
 						}
 					case let .failure(error):
 						callback(.failure(error))
 				}
 			}
+		}
+	}
+	
+	@discardableResult
+	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0,
+						f: @escaping (T, @escaping (U) -> Void, @escaping (Error) -> Void) -> Void) -> Promise<U> {
+		then(queue, timeout: timeout) { value, resolve, reject, c in
+			f(value, resolve, reject)
 		}
 	}
 	
@@ -439,7 +467,7 @@ public struct Promise<T> {
 	///
 	/// - SeeAlso: `resume()`
 	public func suspend() {
-		monitor.lock()
+		monitor.suspend()
 	}
 	
 	/// Resumes the promise or the promise chain.
@@ -460,7 +488,7 @@ public struct Promise<T> {
 	///
 	/// - SeeAlso: `suspend()`
 	public func resume() {
-		monitor.unlock()
+		monitor.resume()
 	}
 	
 	/// Cancels execution of the promise or the promise chain.
@@ -604,7 +632,7 @@ public struct Promise<T> {
 					setResult(i, value: $0)
 				}
 				.catch { error in
-					if settled , let value = error as? T {
+					if settled, let value = error as? T {
 						setResult(i, value: value)
 					}
 					else {

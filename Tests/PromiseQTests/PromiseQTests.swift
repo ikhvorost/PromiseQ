@@ -29,11 +29,10 @@ extension DispatchQueue {
 	}
 }
 
-func asyncAfter(_ sec: Double = 0.25, closure: @escaping (() -> Void) ) {
-	DispatchQueue.global().asyncAfter(deadline: .now() + sec) {
-		closure()
-    }
+extension URLSessionDataTask: Controllable {
 }
+
+// MARK: -
 
 /// GitHub user fields
 struct User : Codable {
@@ -41,22 +40,56 @@ struct User : Codable {
 	let avatar_url: String
 }
 
+class AsyncTask : Controllable {
+	var workItem: DispatchWorkItem?
+	let completion: () -> Void
+	
+	init(_ data: Data, completion: @escaping (Int) -> Void) {
+		self.completion = { completion(data.count) }
+	}
+	
+	func suspend() {
+		print("Task: suspend")
+		workItem?.cancel()
+	}
+	
+	func resume() {
+		print("Task: resume")
+		workItem = DispatchWorkItem(block: self.completion)
+		DispatchQueue.global().asyncAfter(deadline: .now() + 1, execute: workItem!)
+	}
+	
+	func cancel() {
+		print("Task: cancel")
+		workItem?.cancel()
+	}
+}
+
+// MARK: -
+
+func asyncAfter(_ sec: Double = 0.25, closure: @escaping (() -> Void) ) {
+	DispatchQueue.global().asyncAfter(deadline: .now() + sec) {
+		closure()
+    }
+}
+
 /// Make a HTTP request to fetch data by a path
 func fetch(_ path: String) -> Promise<Data> {
-	Promise<Data> { resolve, reject in
+	Promise<Data> { resolve, reject, control in
 		guard let url = URL(string: path) else {
 			reject("Bad path")
 			return
 		}
 		
-		var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: 10)
+		var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
 			
 		// GitHub auth
 		if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] {
 			request.addValue("token \(token)", forHTTPHeaderField: "Authorization")
 		}
 		
-		URLSession.shared.dataTask(with: request) { data, response, error in
+		let time = Date()
+		let task = URLSession.shared.dataTask(with: request) { data, response, error in
 			guard error == nil else {
 				reject(error!)
 				return
@@ -72,11 +105,16 @@ func fetch(_ path: String) -> Promise<Data> {
 				return
 			}
 			
+			print("Fetch: `\(path)` - ", String(format: "%0.3f sec", -time.timeIntervalSinceNow))
 			resolve(data)
 		}
-		.resume()
+		task.resume()
+				
+		control = task
 	}
 }
+
+// MARK: -
 
 final class PromiseLiteTests: XCTestCase {
 	
@@ -867,6 +905,58 @@ final class PromiseLiteTests: XCTestCase {
 		}
 	}
 	
+	func testPromise_ControllableSuspendResume() {
+		wait(timeout: 10) { expectation in
+			let path = "https://developer.apple.com/sample-code/swift/downloads/Standard-Library.zip"
+			let p = fetch(path)
+			p.then { (data, resolve: @escaping (Int)->Void, reject, control) in
+				control = AsyncTask(data) { count in resolve(count) }
+				control?.resume()
+				
+				asyncAfter {
+					p.suspend()
+				}
+				
+				asyncAfter(1) {
+					p.resume()
+				}
+			}
+			.then { count in
+				XCTAssert(count > 0)
+				expectation.fulfill()
+			}
+			.catch { error in
+				print("Error: \(error.localizedDescription)")
+			}
+			
+			// Fetch
+			asyncAfter(1) {
+				p.suspend()
+			}
+			asyncAfter(2) {
+				p.resume()
+			}
+		}
+	}
+	
+	func testPromise_ControllableCancel() {
+		wait(timeout: 2) { expectation in
+			expectation.isInverted = true
+			
+			let p = Promise { (resolve: @escaping (Int)->Void , reject, control) in
+				control = AsyncTask(Data()) { count in resolve(count) }
+				control?.resume()
+			}
+			.then { count in
+				expectation.fulfill()
+			}
+			
+			asyncAfter {
+				p.cancel()
+			}
+		}
+	}
+	
 	func testPromise_Async() {
 		wait { expectation in
 			async {
@@ -932,7 +1022,6 @@ final class PromiseLiteTests: XCTestCase {
 	/// Load avatars of first 30 GitHub users
 	func testPromise_SampleThen() {
 		wait(timeout: 4) { expectation in
-		
 			fetch("https://api.github.com/users")
 			.then { usersData in
 				try JSONDecoder().decode([User].self, from: usersData)
@@ -963,7 +1052,6 @@ final class PromiseLiteTests: XCTestCase {
 	
 	func testPromise_SampleAwait() {
 		wait(timeout: 4) { expectation in
-		
 			async {
 				let usersData = try fetch("https://api.github.com/users").await()
 				

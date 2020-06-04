@@ -44,7 +44,7 @@ private func synchronized<T : AnyObject, U>(_ obj: T, closure: () -> U) -> U {
 }
 
 @propertyWrapper
-private class Atomic<T> {
+class Atomic<T> {
     private var value: T
 
     init(wrappedValue value: T) {
@@ -65,27 +65,40 @@ class Monitor {
 	@Atomic private var cancelled = false
 	@Atomic private var semaphore: DispatchSemaphore?
 	
+	@Atomic var controlled: Controllable?
+	
 	var isCancelled: Bool {
 		get { cancelled }
 	}
 	
 	func cancel() {
 		cancelled = true
+		controlled?.cancel()
 	}
 	
-	func lock() {
-		guard semaphore == nil else {
-			return
+	func suspend() {
+		if let c = controlled {
+			c.suspend()
 		}
-		semaphore = .Lock()
+		else {
+			guard semaphore == nil else {
+				return
+			}
+			semaphore = .Lock()
+		}
 	}
 	
 	func wait() {
 		semaphore?.wait()
 	}
 	
-	func unlock() {
-		semaphore?.signal()
-		semaphore = nil
+	func resume() {
+		if let c = controlled {
+			c.resume()
+		}
+		else {
+			semaphore?.signal()
+			semaphore = nil
+		}
 	}
 }
