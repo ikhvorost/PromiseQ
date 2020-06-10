@@ -929,7 +929,7 @@ final class PromiseLiteTests: XCTestCase {
 	}
 	
 	func testPromise_AsyncableSuspendResume() {
-		wait(timeout: 5) { expectation in
+		wait(timeout: 10) { expectation in
 			let p = fetch("https://github.com/ikhvorost/PromiseQ/archive/master.zip")
 			p.then { (data, resolve: @escaping (Int)->Void, reject, task) in
 				task = AsyncTask(data) { count in resolve(count) }
@@ -980,7 +980,7 @@ final class PromiseLiteTests: XCTestCase {
 	}
 	
 	func testPromise_AsyncableAll() {
-		wait(timeout: 5) { expectation in
+		wait(timeout: 10) { expectation in
 			let p = Promise.all (
 				fetch("https://github.com/ikhvorost/PromiseQ/archive/master.zip"),
 				fetch("https://github.com/ikhvorost/quantum-computing/archive/master.zip")
