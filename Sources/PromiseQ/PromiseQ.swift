@@ -82,7 +82,7 @@ public enum PromiseError: String, LocalizedError {
 	public var errorDescription: String? { return rawValue }
 }
 
-public protocol Controllable {
+public protocol Asyncable {
 	func suspend()
 	func resume()
 	func cancel()
@@ -168,14 +168,14 @@ public struct Promise<T> {
 	/// - Returns: A new `Promise`
 	@discardableResult
 	public init(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0,
-				f: @escaping (@escaping (T) -> Void,  @escaping (Error) -> Void, inout Controllable?) -> Void) {
+				f: @escaping (@escaping (T) -> Void,  @escaping (Error) -> Void, inout Asyncable?) -> Void) {
 		let monitor = Monitor()
 		self.init(monitor) { callback in
 			setTimeout(timeout: timeout, callback: callback)
 			execute(queue, monitor: monitor) {
-				let resolve = { (value: T) in monitor.controlled = nil; callback(.success(value)) }
-				let reject = { (error: Error) in monitor.controlled = nil; callback(.failure(error)) }
-				f(resolve, reject, &monitor.controlled )
+				let resolve = { (value: T) in monitor.task = nil; callback(.success(value)) }
+				let reject = { (error: Error) in monitor.task = nil; callback(.failure(error)) }
+				f(resolve, reject, &monitor.task )
 			}
 		}
 	}
@@ -312,7 +312,7 @@ public struct Promise<T> {
 	///	- Returns: A new chained promise.
 	@discardableResult
 	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0,
-						f: @escaping (T, @escaping (U) -> Void, @escaping (Error) -> Void, inout Controllable?) -> Void) -> Promise<U> {
+						f: @escaping (T, @escaping (U) -> Void, @escaping (Error) -> Void, inout Asyncable?) -> Void) -> Promise<U> {
 		autoRun.cancel()
 		return Promise<U>(monitor) { callback in
 			setTimeout(timeout: timeout, callback: callback)
@@ -322,9 +322,9 @@ public struct Promise<T> {
 				switch result {
 					case let .success(value):
 						execute(queue, monitor: self.monitor) {
-							let resolve = { (value: U) in self.monitor.controlled = nil; callback(.success(value)) }
-							let reject = { (error: Error) in self.monitor.controlled = nil; callback(.failure(error)) }
-							f(value, resolve, reject, &self.monitor.controlled)
+							let resolve = { (value: U) in self.monitor.task = nil; callback(.success(value)) }
+							let reject = { (error: Error) in self.monitor.task = nil; callback(.failure(error)) }
+							f(value, resolve, reject, &self.monitor.task)
 						}
 					case let .failure(error):
 						callback(.failure(error))
@@ -611,8 +611,12 @@ public struct Promise<T> {
 	public static func all(settled: Bool = false, _ promises:[Promise<T>]) -> Promise<Array<T>> {
 		var results = [Int : T]()
 		let mutex = DispatchSemaphore.Mutex()
+		promises.forEach { $0.autoRun.cancel() }
+		let container = AsyncContainer(tasks: promises.map(\.monitor))
 		
-		return Promise<Array<T>> { resolve, reject in
+		return Promise<Array<T>> { resolve, reject, task in
+			
+			task = container
 			
 			func setResult(_ i: Int, value: T) {
 				mutex.wait()
@@ -641,6 +645,10 @@ public struct Promise<T> {
 				}
 			}
 		}
+	}
+	
+	public static func all(settled: Bool = false, _ promises:Promise<T>...) -> Promise<Array<T>> {
+		return all(settled: settled, promises)
 	}
 	
 }
@@ -688,12 +696,20 @@ extension Promise where T == Any {
 	///	- Returns: A new single promise.
 	/// - SeeAlso: `Promise.all()`
 	public static func race(_ promises:[Promise<T>]) -> Promise<T> {
-		return Promise { resolve, reject in
+		promises.forEach { $0.autoRun.cancel() }
+		let container = AsyncContainer(tasks: promises.map(\.monitor))
+		return Promise { resolve, reject, task in
+			task = container
+			
 			promises.forEach {
 				$0.then { resolve($0) }
 				.catch { reject($0) }
 			}
 		}
+	}
+	
+	public static func race(_ promises:Promise<T>...) -> Promise<T> {
+		return race(promises)
 	}
 }
 

@@ -30,7 +30,7 @@ extension DispatchQueue {
 	}
 }
 
-extension URLSessionDataTask: Controllable {
+extension URLSessionDataTask: Asyncable {
 }
 
 // MARK: -
@@ -41,7 +41,7 @@ struct User : Codable {
 	let avatar_url: String
 }
 
-class AsyncTask : Controllable {
+class AsyncTask : Asyncable {
 	var workItem: DispatchWorkItem?
 	let completion: () -> Void
 	
@@ -94,7 +94,7 @@ func asyncAfter(_ sec: Double = 0.25, closure: @escaping (() -> Void) ) {
 
 /// Make a HTTP request to fetch data by a path
 func fetch(_ path: String) -> Promise<Data> {
-	Promise<Data> { resolve, reject, control in
+	Promise<Data> { resolve, reject, task in
 		guard let url = URL(string: path) else {
 			reject("Bad path")
 			return
@@ -108,7 +108,7 @@ func fetch(_ path: String) -> Promise<Data> {
 		}
 		
 		let time = Date()
-		let task = URLSession.shared.dataTask(with: request) { data, response, error in
+		task = URLSession.shared.dataTask(with: request) { data, response, error in
 			guard error == nil else {
 				reject(error!)
 				return
@@ -127,9 +127,7 @@ func fetch(_ path: String) -> Promise<Data> {
 			dlog("Fetch: \"\(path)\"", String(format: "(%0.3f sec)", -time.timeIntervalSinceNow))
 			resolve(data)
 		}
-		task.resume()
-				
-		control = task
+		task?.resume()
 	}
 }
 
@@ -654,7 +652,7 @@ final class PromiseLiteTests: XCTestCase {
 	
 	func testPromise_All() {
 		wait { expectation in
-			Promise.all([
+			Promise.all(
 				Promise { resolve, reject in
 					asyncAfter {
 						resolve("Hello")
@@ -664,8 +662,8 @@ final class PromiseLiteTests: XCTestCase {
 					asyncAfter(0.5) {
 						resolve("World")
 					}
-				},
-			] )
+				}
+			)
 			.then { results in
 				XCTAssert(results.count == 2)
 				XCTAssert(results[0] == "Hello")
@@ -677,14 +675,14 @@ final class PromiseLiteTests: XCTestCase {
 	
 	func testPromise_AllAny() {
 		wait { expectation in
-			Promise.all([
+			Promise.all(
 				Promise<Any> { resolve, reject in
 					asyncAfter {
 						resolve("Hello")
 					}
 				},
 				Promise.resolve(200)
-			] )
+			)
 			.then { results in
 				XCTAssert(results.count == 2)
 				XCTAssert(results[0] as! String == "Hello")
@@ -696,14 +694,14 @@ final class PromiseLiteTests: XCTestCase {
 	
 	func testPromise_AllCatch() {
 		wait { expectation in
-			Promise.all([
+			Promise.all(
 				Promise { resolve, reject in
 					asyncAfter {
 						reject("Error")
 					}
 				},
-				Promise.resolve(3),
-			])
+				Promise.resolve(3)
+			)
 			.then { results in
 				XCTFail()
 			}
@@ -716,7 +714,7 @@ final class PromiseLiteTests: XCTestCase {
 	
 	func testPromise_AllSettled() {
 		wait { expectation in
-			Promise.all(settled: true, [
+			Promise.all(settled: true,
 				Promise<Any> { resolve, reject in
 					asyncAfter {
 						reject("Error")
@@ -724,7 +722,7 @@ final class PromiseLiteTests: XCTestCase {
 				},
 				Promise.resolve(200),
 				Promise.resolve(3.14)
-			])
+			)
 			.then { results in
 				XCTAssert(results.count == 3)
 				XCTAssert(results[0] as! String == "Error")
@@ -740,7 +738,7 @@ final class PromiseLiteTests: XCTestCase {
 	
 	func testPromise_RaceThen() {
 		wait { expectation in
-			Promise.race([
+			Promise.race(
 				Promise { resolve, reject in
 					asyncAfter(1) {
 						reject("Error")
@@ -751,7 +749,7 @@ final class PromiseLiteTests: XCTestCase {
 						resolve(200)
 					}
 				}
-			])
+			)
 			.then { result in
 				XCTAssert(result as! Int == 200)
 				expectation.fulfill()
@@ -764,7 +762,7 @@ final class PromiseLiteTests: XCTestCase {
 	
 	func testPromise_RaceCatch() {
 		wait { expectation in
-			Promise.race([
+			Promise.race(
 				Promise { resolve, reject in
 					asyncAfter {
 						reject("Error")
@@ -775,7 +773,7 @@ final class PromiseLiteTests: XCTestCase {
 						resolve(3)
 					}
 				}
-			])
+			)
 			.then { result in
 				XCTFail()
 			}
@@ -930,13 +928,12 @@ final class PromiseLiteTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_ControllableSuspendResume() {
-		wait(timeout: 10) { expectation in
-			let path = "https://developer.apple.com/sample-code/swift/downloads/Standard-Library.zip"
-			let p = fetch(path)
-			p.then { (data, resolve: @escaping (Int)->Void, reject, control) in
-				control = AsyncTask(data) { count in resolve(count) }
-				control?.resume()
+	func testPromise_AsyncableSuspendResume() {
+		wait(timeout: 5) { expectation in
+			let p = fetch("https://github.com/ikhvorost/PromiseQ/archive/master.zip")
+			p.then { (data, resolve: @escaping (Int)->Void, reject, task) in
+				task = AsyncTask(data) { count in resolve(count) }
+				task?.resume()
 				
 				asyncAfter {
 					p.suspend()
@@ -964,13 +961,13 @@ final class PromiseLiteTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_ControllableCancel() {
+	func testPromise_AsyncableCancel() {
 		wait(timeout: 2) { expectation in
 			expectation.isInverted = true
 			
-			let p = Promise { (resolve: @escaping (Int)->Void , reject, control) in
-				control = AsyncTask(Data()) { count in resolve(count) }
-				control?.resume()
+			let p = Promise { (resolve: @escaping (Int)->Void , reject, task) in
+				task = AsyncTask(Data()) { count in resolve(count) }
+				task?.resume()
 			}
 			.then { count in
 				expectation.fulfill()
@@ -978,6 +975,27 @@ final class PromiseLiteTests: XCTestCase {
 			
 			asyncAfter {
 				p.cancel()
+			}
+		}
+	}
+	
+	func testPromise_AsyncableAll() {
+		wait(timeout: 5) { expectation in
+			let p = Promise.all (
+				fetch("https://github.com/ikhvorost/PromiseQ/archive/master.zip"),
+				fetch("https://github.com/ikhvorost/quantum-computing/archive/master.zip")
+			)
+			.then { results in
+				XCTAssert(results.count > 0)
+				expectation.fulfill()
+			}
+			
+			// Fetch
+			asyncAfter(1) {
+				p.suspend()
+			}
+			asyncAfter(2) {
+				p.resume()
 			}
 		}
 	}

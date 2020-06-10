@@ -61,11 +61,11 @@ class Atomic<T> {
     }
 }
 
-class Monitor {
+class Monitor : Asyncable {
 	@Atomic private var cancelled = false
 	@Atomic private var semaphore: DispatchSemaphore?
 	
-	@Atomic var controlled: Controllable?
+	@Atomic var task: Asyncable?
 	
 	var isCancelled: Bool {
 		get { cancelled }
@@ -73,12 +73,12 @@ class Monitor {
 	
 	func cancel() {
 		cancelled = true
-		controlled?.cancel()
+		task?.cancel()
 	}
 	
 	func suspend() {
-		if let c = controlled {
-			c.suspend()
+		if let t = task {
+			t.suspend()
 		}
 		else {
 			guard semaphore == nil else {
@@ -93,12 +93,29 @@ class Monitor {
 	}
 	
 	func resume() {
-		if let c = controlled {
-			c.resume()
+		if let t = task {
+			t.resume()
 		}
 		else {
 			semaphore?.signal()
 			semaphore = nil
 		}
+	}
+}
+
+
+struct AsyncContainer : Asyncable {
+	@Atomic var tasks: [Asyncable]
+	
+	func suspend() {
+		tasks.forEach { $0.suspend() }
+	}
+	
+	func resume() {
+		tasks.forEach { $0.resume() }
+	}
+	
+	func cancel() {
+		tasks.forEach { $0.cancel() }
 	}
 }
