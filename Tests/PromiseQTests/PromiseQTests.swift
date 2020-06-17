@@ -1,5 +1,7 @@
 
 import XCTest
+import os.log
+
 @testable import PromiseQ
 
 #if os(macOS)
@@ -31,6 +33,24 @@ extension DispatchQueue {
 }
 
 extension URLSessionDataTask: Asyncable {
+}
+
+enum ASCIIColor: String {
+    case black = "\u{001B}[0;30m"
+    case red = "\u{001B}[0;31m"
+    case green = "\u{001B}[0;32m"
+    case yellow = "\u{001B}[0;33m"
+    case blue = "\u{001B}[0;34m"
+    case magenta = "\u{001B}[0;35m"
+    case cyan = "\u{001B}[0;36m"
+    case white = "\u{001B}[0;37m"
+    case `default` = "\u{001B}[0;0m"
+}
+
+extension DefaultStringInterpolation {
+    mutating func appendInterpolation<T: CustomStringConvertible>(_ value: T, color: ASCIIColor) {
+        appendInterpolation("\(color.rawValue)\(value)\(ASCIIColor.default.rawValue)")
+    }
 }
 
 // MARK: -
@@ -68,6 +88,14 @@ class AsyncTask : Asyncable {
 
 // MARK: -
 
+@available(OSX 10.12, *)
+extension OSLog {
+    private static var subsystem = Bundle.main.bundleIdentifier!
+
+    /// Logs the view cycles like viewDidLoad.
+    static let viewCycle = OSLog(subsystem: subsystem, category: "viewcycle")
+}
+
 let debugDateFormatter: DateFormatter = {
 	let dateFormatter = DateFormatter()
 	dateFormatter.dateFormat = "HH:mm:ss:SSS"
@@ -80,10 +108,14 @@ func dlog(_ items: String..., icon: Character = "▶️", file: String = #file, 
 	let time = debugDateFormatter.string(from: Date())
 	
 	print("[\(time)] [DLOG] \(icon) <\(fileName):\(line)>", text)
+	
+//	if #available(OSX 10.12, *) {
+//		os_log("%{public}@", log: OSLog.viewCycle, type: .info, "[\(time)] [DLOG] \(icon) <\(fileName):\(line) \(text)>")
+//	}
 }
 
 func dlog(error: Error, file: String = #file, function: String = #function, line: UInt = #line) {
-	dlog("Error: \(error.localizedDescription)", icon: "⚠️", file: file, function: function, line: line)
+	dlog("\("Error: \(error.localizedDescription)", color: .yellow)", icon: "⚠️", file: file, function: function, line: line)
 }
 
 func asyncAfter(_ sec: Double = 0.25, closure: @escaping (() -> Void) ) {
@@ -133,7 +165,7 @@ func fetch(_ path: String) -> Promise<Data> {
 
 // MARK: -
 
-final class PromiseLiteTests: XCTestCase {
+final class PromiseQTests: XCTestCase {
 	
 	func wait(count: Int, timeout: TimeInterval = 1, name: String = #function, closure: ([XCTestExpectation]) -> Void) {
 		let expectations = (0..<count).map { _ in expectation(description: name) }
@@ -930,7 +962,7 @@ final class PromiseLiteTests: XCTestCase {
 	
 	func testPromise_AsyncableSuspendResume() {
 		wait(timeout: 10) { expectation in
-			let p = fetch("https://github.com/ikhvorost/PromiseQ/archive/master.zip")
+			let p = fetch("http://github.com/ikhvorost/PromiseQ/archive/master.zip")
 			p.then { (data, resolve: @escaping (Int)->Void, reject, task) in
 				task = AsyncTask(data) { count in resolve(count) }
 				task?.resume()
@@ -982,12 +1014,15 @@ final class PromiseLiteTests: XCTestCase {
 	func testPromise_AsyncableAll() {
 		wait(timeout: 10) { expectation in
 			let p = Promise.all (
-				fetch("https://github.com/ikhvorost/PromiseQ/archive/master.zip"),
-				fetch("https://github.com/ikhvorost/quantum-computing/archive/master.zip")
+				fetch("http://github.com/ikhvorost/PromiseQ/archive/master.zip"),
+				fetch("http://github.com/ikhvorost/quantum-computing/archive/master.zip")
 			)
 			.then { results in
 				XCTAssert(results.count > 0)
 				expectation.fulfill()
+			}
+			.catch { error in
+				dlog(error: error)
 			}
 			
 			// Fetch
