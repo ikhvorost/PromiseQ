@@ -962,7 +962,8 @@ final class PromiseQTests: XCTestCase {
 	
 	func testPromise_AsyncableSuspendResume() {
 		wait(timeout: 10) { expectation in
-			let p = fetch("http://github.com/ikhvorost/PromiseQ/archive/master.zip")
+			let url = "https://docs.swift.org/swift-book/TheSwiftProgrammingLanguageSwift52.epub"
+			let p = fetch(url)
 			p.then { (data, resolve: @escaping (Int)->Void, reject, task) in
 				task = AsyncTask(data) { count in resolve(count) }
 				task?.resume()
@@ -1013,9 +1014,10 @@ final class PromiseQTests: XCTestCase {
 	
 	func testPromise_AsyncableAll() {
 		wait(timeout: 10) { expectation in
+			let url = "https://docs.swift.org/swift-book/TheSwiftProgrammingLanguageSwift52.epub"
 			let p = Promise.all (
-				fetch("http://github.com/ikhvorost/PromiseQ/archive/master.zip"),
-				fetch("http://github.com/ikhvorost/quantum-computing/archive/master.zip")
+				fetch(url),
+				fetch(url)
 			)
 			.then { results in
 				XCTAssert(results.count > 0)
