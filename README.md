@@ -429,7 +429,7 @@ DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
 
 ## Sample
 
-There are to variants of code to fetch avatars of first 30 GitHub users that use [`fetch(path:String)-> Promise<Data>`](Tests/PromiseQTests/PromiseQTests.swift#L128) utility function and [`User`](Tests/PromiseQTests/PromiseQTests.swift#59) struct to parse a json response.
+There are to variants of code to fetch avatars of first 30 GitHub users that use [`fetch(path:String)-> Promise<Data>`](Tests/PromiseQTests/PromiseQTests.swift#L132) utility function and [`User`](Tests/PromiseQTests/PromiseQTests.swift#L59) struct to parse a json response.
 
 Using `then`:
 
