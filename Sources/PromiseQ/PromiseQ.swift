@@ -77,14 +77,33 @@ private func execute(_ queue: DispatchQueue, monitor: Monitor, f: @escaping () -
 /// - SeeAlso: `Promise.await()`.
 public typealias async = Promise
 
+/// Promise errors
 public enum PromiseError: String, LocalizedError {
+	/// The promise timed out
 	case timedOut = "The promise timed out."
+	
+	/// A localized message describing what error occurred.
 	public var errorDescription: String? { return rawValue }
 }
 
+/// An asynchronous type that can suspend, resume and cancel it's execution.
+///
+/// The protocol is the base for asynchronous tasks than can be managed by promises.
 public protocol Asyncable {
+	
+	/// Temporarily suspends a task.
+	///
+	/// A task, while suspended, produces no activity and is not subject to timeouts.
 	func suspend()
+	
+	/// Resumes the task, if it is suspended.
+	///
+	/// If a task is in a suspended state, you need to call this method to start the task.
 	func resume()
+	
+	/// Cancels the task.
+	///
+	/// This method returns immediately, marking the task as being canceled. This method may be called on a task that is suspended.
 	func cancel()
 }
 
@@ -140,32 +159,31 @@ public struct Promise<T> {
 		}
 	}
 
-	/// Initialize a new promise that can be resolved or rejected with the callbacks.
+	/// Initialize a new promise that can be resolved or rejected with the callbacks and can manage a wrapped asynchronous task.
 	///
-	/// When new promise is created, the closure runs automatically.
+	/// The wrapped asynchronous task must be conformed to `Asyncable` protocol.
 	///
-	///		// Resolved promise
-	///     Promise { resolve, reject in
-	///     	resolve(200)
-	///     }
+	/// 	extension URLSessionDataTask: Asyncable {
+	/// 	}
 	///
-	/// 	// Rejected promise on the main queue
-	///     Promise(.main) { resolve, reject in
-	///			reject(error)
-	///     }
-	///
-	/// The closure should call only one resolve or one reject. All further calls of resolve and reject are ignored:
-	///
-	/// 	Promise { resolve, reject in
-	///			resolve("done")
-	///			reject(error) // ignored
+	/// 	Promise { resolve, reject, task in
+	///			task = URLSession.shared.dataTask(with: request) { data, response, error in
+	///				guard error == nil else {
+	///					reject(error!)
+	///					return
+	///				}
+	///				resolve(data)
+	///			}
+	///			task.resume()
 	///		}
 	///
 	/// - Parameters:
 	/// 	- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
 	///		- timeout: The time interval to wait for resolving a promise.
-	///		- f: The closure to be invoked on the queue that provides the callbacks to resolve or reject the promise.
+	///		- f: The closure to be invoked on the queue that provides the callbacks to `resolve/reject` the promise and
+	///		a wrapped asynchronous task to manage.
 	/// - Returns: A new `Promise`
+	/// - SeeAlso: `Asyncable`
 	@discardableResult
 	public init(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0,
 				f: @escaping (@escaping (T) -> Void,  @escaping (Error) -> Void, inout Asyncable?) -> Void) {
@@ -180,10 +198,36 @@ public struct Promise<T> {
 		}
 	}
 	
+	/// Initialize a new promise that can be resolved or rejected with the callbacks.
+	///
+	/// When new promise is created, the closure runs automatically.
+	///
+	///		// Resolved promise
+	///     Promise { resolve, reject in
+	///     	resolve(200)
+	///     }
+	///
+	/// 	// Rejected promise on the main queue
+	///     Promise(.main) { resolve, reject in
+	///			reject(error)
+	///     }
+	///
+	/// The closure should call only one `resolve` or one `reject`. All further calls of resolve and reject are ignored:
+	///
+	/// 	Promise { resolve, reject in
+	///			resolve("done")
+	///			reject(error) // Ignored call
+	///		}
+	///
+	/// - Parameters:
+	/// 	- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
+	///		- timeout: The time interval to wait for resolving a promise.
+	///		- f: The closure to be invoked on the queue that provides the callbacks to `resolve/reject` the promise
+	/// - Returns: A new `Promise`
 	@discardableResult
 	public init(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0,
 				f: @escaping ( @escaping (T) -> Void,  @escaping (Error) -> Void) -> Void) {
-		self.init(queue, timeout: timeout) { resolve, reject, c in
+		self.init(queue, timeout: timeout) { resolve, reject, task in
 			f(resolve, reject)
 		}
 	}
@@ -291,25 +335,40 @@ public struct Promise<T> {
 		}
 	}
 	
-	///	The provided closure executes with a result of this promise when it is resolved.
+	///	The provided closure executes with a result of this promise when it is resolved and provides the callbacks to
+	///	resolve or reject a chained promise and can manage a wrapped asynchronous task.
 	///
-	///	This allows chaining promises and passes results through the chain.
+	/// 	// The wrapped asynchronous task must be conformed to `Asyncable` protocol.
+	/// 	extension URLSessionDataTask: Asyncable {
+	/// 	}
 	///
-	///		Promise {
-	///			return "done"
+	/// 	let promise = Promise {
+	///			return request
 	///		}
-	///		.then { value, resolve, reject in
-	///			resolve(value.count)
-	///		}
-	///		.then {
-	///			print($0) // Prints "4"
-	///		}
+	///		.then { request, resolve, reject, task in // `task` is in-out parameter
+	/// 		task = URLSession.shared.dataTask(with: request) { data, response, error in
+	/// 			guard error == nil else {
+	/// 				reject(error!)
+	/// 				return
+	/// 			}
+	/// 			resolve(data)
+	/// 		}
+	/// 		task.resume()
+	/// 	}
+	///
+	/// 	// The promise and the data task will be suspended after 2 secs and won't produce any network activity.
+	/// 	// but they can be resumed later.
+	/// 	DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+	/// 		promise.suspend()
+	/// 	}
 	///
 	///	- Parameters:
 	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
 	///		- timeout: The time interval to wait for resolving a promise.
-	///		- f: The closure to be invoked on the queue that gets a result and provides the callbacks to resolve or reject the promise.
+	///		- f: The closure to be invoked on the queue that gets a result and provides the callbacks to resolve or
+	///		reject the promise and a wrapped asynchronous task to manage.
 	///	- Returns: A new chained promise.
+	/// - SeeAlso: `Asyncable`
 	@discardableResult
 	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0,
 						f: @escaping (T, @escaping (U) -> Void, @escaping (Error) -> Void, inout Asyncable?) -> Void) -> Promise<U> {
@@ -333,10 +392,29 @@ public struct Promise<T> {
 		}
 	}
 	
+	///	The provided closure executes with a result of this promise when it is resolved.
+	///
+	///	This allows chaining promises and passes results through the chain.
+	///
+	///		Promise {
+	///			return "done"
+	///		}
+	///		.then { value, resolve, reject in
+	///			resolve(value.count)
+	///		}
+	///		.then {
+	///			print($0) // Prints "4"
+	///		}
+	///
+	///	- Parameters:
+	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
+	///		- timeout: The time interval to wait for resolving a promise.
+	///		- f: The closure to be invoked on the queue that gets a result and provides the callbacks to resolve or reject the promise.
+	///	- Returns: A new chained promise.
 	@discardableResult
 	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0,
 						f: @escaping (T, @escaping (U) -> Void, @escaping (Error) -> Void) -> Void) -> Promise<U> {
-		then(queue, timeout: timeout) { value, resolve, reject, c in
+		then(queue, timeout: timeout) { value, resolve, reject, task in
 			f(value, resolve, reject)
 		}
 	}
@@ -587,6 +665,12 @@ public struct Promise<T> {
 		}
 	}
 	
+	/// Executes all promises in parallel and returns a single promise that resolves when all of the promises have been resolved or settled and returns an array of their results.
+	///
+	/// For more details see:
+	///
+	///		Promise.all(settled, [Promise<T>]) -> Promise<Array<T>>
+	///
 	public static func all(settled: Bool = false, _ promises:Promise<T>...) -> Promise<Array<T>> {
 		return all(settled: settled, promises)
 	}
@@ -710,6 +794,13 @@ extension Promise where T == Any {
 		}
 	}
 	
+	/// Waits only for the first settled promise and gets its result (or error).
+	///
+	/// For more details see:
+	///
+	/// 	Promise.race([Promise<T>]) -> Promise<T>
+	///
+	/// - SeeAlso: Promise.race([Promise<T>]) -> Promise<T>
 	public static func race(_ promises:Promise<T>...) -> Promise<T> {
 		return race(promises)
 	}

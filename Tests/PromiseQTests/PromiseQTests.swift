@@ -61,28 +61,32 @@ struct User : Codable {
 	let avatar_url: String
 }
 
-class AsyncTask : Asyncable {
-	var workItem: DispatchWorkItem?
-	let completion: () -> Void
+class TimeOutTask : Asyncable {
+	let timeOut: TimeInterval
+	var work: DispatchWorkItem?
+	let fire: () -> Void
 	
-	init(_ data: Data, completion: @escaping (Int) -> Void) {
-		self.completion = { completion(data.count) }
+	init(timeOut: TimeInterval, _ fire: @escaping () -> Void) {
+		self.timeOut = timeOut
+		self.fire = fire
 	}
 	
+	// MARK: Asyncable
+	
 	func suspend() {
-		dlog("Task: suspend")
-		workItem?.cancel()
+		cancel()
 	}
 	
 	func resume() {
 		dlog("Task: resume")
-		workItem = DispatchWorkItem(block: self.completion)
-		DispatchQueue.global().asyncAfter(deadline: .now() + 1, execute: workItem!)
+		work = DispatchWorkItem(block: self.fire)
+		DispatchQueue.global().asyncAfter(deadline: .now() + timeOut, execute: work!)
 	}
 	
 	func cancel() {
 		dlog("Task: cancel")
-		workItem?.cancel()
+		work?.cancel()
+		work = nil
 	}
 }
 
@@ -166,6 +170,9 @@ func fetch(_ path: String) -> Promise<Data> {
 // MARK: -
 
 final class PromiseQTests: XCTestCase {
+	
+	// Url with large data to fetch
+	let url = "https://developer.apple.com/swift/blog/"
 	
 	func wait(count: Int, timeout: TimeInterval = 1, name: String = #function, closure: ([XCTestExpectation]) -> Void) {
 		let expectations = (0..<count).map { _ in expectation(description: name) }
@@ -962,10 +969,9 @@ final class PromiseQTests: XCTestCase {
 	
 	func testPromise_AsyncableSuspendResume() {
 		wait(timeout: 10) { expectation in
-			let url = "https://docs.swift.org/swift-book/TheSwiftProgrammingLanguageSwift52.epub"
 			let p = fetch(url)
-			p.then { (data, resolve: @escaping (Int)->Void, reject, task) in
-				task = AsyncTask(data) { count in resolve(count) }
+			p.then { (data, resolve: @escaping (String)->Void, reject, task) in
+				task = TimeOutTask(timeOut: 1) { resolve("fired") }
 				task?.resume()
 				
 				asyncAfter {
@@ -976,8 +982,8 @@ final class PromiseQTests: XCTestCase {
 					p.resume()
 				}
 			}
-			.then { count in
-				XCTAssert(count > 0)
+			.then { text in
+				XCTAssert(text == "fired")
 				expectation.fulfill()
 			}
 			.catch { error in
@@ -998,11 +1004,12 @@ final class PromiseQTests: XCTestCase {
 		wait(timeout: 2) { expectation in
 			expectation.isInverted = true
 			
-			let p = Promise { (resolve: @escaping (Int)->Void , reject, task) in
-				task = AsyncTask(Data()) { count in resolve(count) }
+			let p = Promise<String> { resolve, reject, task in
+				task = TimeOutTask(timeOut: 1) { resolve("fired") }
 				task?.resume()
 			}
-			.then { count in
+			.then { text in
+				XCTAssert(text == "fired")
 				expectation.fulfill()
 			}
 			
@@ -1014,7 +1021,6 @@ final class PromiseQTests: XCTestCase {
 	
 	func testPromise_AsyncableAll() {
 		wait(timeout: 10) { expectation in
-			let url = "https://docs.swift.org/swift-book/TheSwiftProgrammingLanguageSwift52.epub"
 			let p = Promise.all (
 				fetch(url),
 				fetch(url)

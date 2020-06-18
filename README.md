@@ -22,6 +22,7 @@ Fast, powerful and lightweight implementation of Promises for Swift.
 	- [`async/await`](#asyncawait)
 	- [`suspend/resume`](#suspendresume)
 	- [`cancel`](#cancel)
+	- [`Asyncable`](#asyncable)
 - [Sample](#sample)
 - [Installation](#installation)
 - [License](#license)
@@ -192,10 +193,10 @@ Promise.reject(error)
 
 ### `Promise.all`
 
-It returns a promise that resolves when all listed promises from the provided array are resolved, and the array of their results becomes its result. If any of the promises is rejected, the promise returned by `Promise.all` immediately rejects with that error:
+It returns a promise that resolves when all listed promises from the provided list are resolved, and the array of their results becomes its result. If any of the promises is rejected, the promise returned by `Promise.all` immediately rejects with that error:
 
 ``` swift
-Promise.all([
+Promise.all(
     Promise {
         return "Hello"
     },
@@ -204,7 +205,7 @@ Promise.all([
             resolve("World")
         }
     }
-])
+)
 .then { results in
     print(results)
 }
@@ -214,7 +215,7 @@ Promise.all([
 You can set `settled=true` param to make a promise that resolves when all listed promises are settled regardless of their results:
 
 ``` swift
-Promise.all(settled: true, [
+Promise.all(settled: true,
     Promise<Any> { resolve, reject in
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             reject(error)
@@ -222,8 +223,8 @@ Promise.all(settled: true, [
     },
     Promise {
         return 200
-    },
-])
+    }
+)
 .then { results in
     print(results)
 }
@@ -233,10 +234,10 @@ Promise.all(settled: true, [
 
 ### `Promise.race`
 
-It makes a promise that waits only for the first settled promise from the given array and gets its result (or error).
+It makes a promise that waits only for the first settled promise from the given list and gets its result (or error).
 
 ``` swift
-Promise.race([
+Promise.race(
 	Promise { resolve, reject in
 		DispatchQueue.main.asyncAfter(deadline: .now() + 2) { // Wait 2 secs
 			reject("Error")
@@ -247,7 +248,7 @@ Promise.race([
 			resolve(200)
 		}
 	}
-])
+)
 .then {
 	print($0)
 }
@@ -340,9 +341,95 @@ let promise = Promise {
 promise.cancel()
 ```
 
+### `Asyncable`
+
+`Asyncable` protocol represents an asynchronous task type that can be suspended, resumed and canceled:
+
+``` Swift
+public protocol Asyncable {
+	func suspend() // Temporarily suspends a task.
+	func resume() // Resumes the task, if it is suspended.
+	func cancel() // Cancels the task.
+}
+```
+
+Promise can manage an asynchronous task when it wraps one. For instance it's useful for network requests:
+
+``` Swift
+// The wrapped asynchronous task must be conformed to `Asyncable` protocol.
+extension URLSessionDataTask: Asyncable {
+}
+
+let promise = Promise<Data> { resolve, reject, task in // `task` is in-out parameter
+	task = URLSession.shared.dataTask(with: request) { data, response, error in
+		guard error == nil else {
+			reject(error!)
+			return
+		}
+		resolve(data)
+	}
+	task.resume()
+}
+
+// The promise and the data task will be suspended after 2 secs and won't produce any network activity.
+// but they can be resumed later.
+DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+	promise.suspend()
+}
+
+```
+
+You can also make your custom asynchronous task that can be managed by a promise:
+
+``` Swift
+class TimeOutTask : Asyncable {
+	let timeOut: TimeInterval
+	var work: DispatchWorkItem?
+	let fire: () -> Void
+
+	init(timeOut: TimeInterval, _ fire: @escaping () -> Void) {
+		self.timeOut = timeOut
+		self.fire = fire
+	}
+
+	// MARK: Asyncable
+
+	func suspend() {
+		cancel()
+	}
+
+	func resume() {
+		work = DispatchWorkItem(block: self.fire)
+		DispatchQueue.global().asyncAfter(deadline: .now() + timeOut, execute: work!)
+	}
+
+	func cancel() {
+		work?.cancel()
+		work = nil
+	}
+}
+
+// Promise
+let promise = Promise<String> { resolve, reject, task in // `task` is in-out parameter
+	task = TimeOutTask(timeOut: 3) {
+		resolve("timed out") // Won't be called
+	}
+	task.resume()
+}
+.then { text in
+	print(text) // Won't be called
+}
+
+// Both the promise and the timed out task will be canceled after 1 sec
+DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+	promise.cancel()
+}
+
+```
+
 ## Sample
 
-There are to variants of code to fetch avatars of first 30 GitHub users that use [`fetch(path:String)`](fetch.md) utility function and [`User`](fetch.md) struct to parse a json response.
+There are to variants of code to fetch avatars of first 30 GitHub users that use [`fetch(path:String)-> Promise<Data>`](Tests/PromiseQTests/PromiseQTests.swift#L128) utility function and [`User`](Tests/PromiseQTests/PromiseQTests.swift#59) struct to parse a json response.
 
 Using `then`:
 
