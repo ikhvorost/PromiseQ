@@ -31,10 +31,12 @@ private func setTimeout<T>(timeout: TimeInterval, callback: @escaping (Result<T,
 	DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: workItem)
 }
 
-private func isPending(_ pending: inout Bool) -> Bool {
-	guard pending else { return false }
-	pending.toggle()
-	return true
+private func isPending(_ monitor: Monitor, pending: inout Bool) -> Bool {
+	return synchronized(monitor) {
+		guard pending else { return false }
+		pending.toggle()
+		return true
+	}
 }
 
 private func execute(_ queue: DispatchQueue, monitor: Monitor, f: @escaping () -> Void) {
@@ -259,7 +261,7 @@ public struct Promise<T> {
 			setTimeout(timeout: timeout, callback: callback)
 			var pending = true
 			self.f { result in
-				guard isPending(&pending) else { return }
+				guard isPending(self.monitor, pending: &pending) else { return }
 				switch result {
 					case let .success(input):
 						execute(queue, monitor: self.monitor) {
@@ -307,7 +309,7 @@ public struct Promise<T> {
 			setTimeout(timeout: timeout, callback: callback)
 			var pending = true
 			self.f { result in
-				guard isPending(&pending) else { return }
+				guard isPending(self.monitor, pending: &pending) else { return }
 				switch result {
 					case let .success(value):
 						execute(queue, monitor: self.monitor) {
@@ -377,7 +379,7 @@ public struct Promise<T> {
 			setTimeout(timeout: timeout, callback: callback)
 			var pending = true
 			self.f { result in
-				guard isPending(&pending) else { return }
+				guard isPending(self.monitor, pending: &pending) else { return }
 				switch result {
 					case let .success(value):
 						execute(queue, monitor: self.monitor) {
@@ -443,7 +445,7 @@ public struct Promise<T> {
 			setTimeout(timeout: timeout, callback: callback)
 			var pending = true
 			self.f { result in
-				guard isPending(&pending) else { return }
+				guard isPending(self.monitor, pending: &pending) else { return }
 				switch result {
 					case .success:
 						callback(.success(()))
@@ -509,7 +511,7 @@ public struct Promise<T> {
 		return Promise<T>(monitor) { callback in
 			var pending = true
 			self.f { result in
-				guard isPending(&pending) else { return }
+				guard isPending(self.monitor, pending: &pending) else { return }
 				execute(queue, monitor: self.monitor, f: f)
 				switch result {
 					case let .success(value):

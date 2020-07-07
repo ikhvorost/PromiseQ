@@ -35,7 +35,7 @@ extension DispatchSemaphore {
 	}
 }
 
-private func synchronized<T : AnyObject, U>(_ obj: T, closure: () -> U) -> U {
+func synchronized<T : AnyObject, U>(_ obj: T, closure: () -> U) -> U {
 	objc_sync_enter(obj)
 	defer {
 		objc_sync_exit(obj)
