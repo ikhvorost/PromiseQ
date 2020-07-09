@@ -58,6 +58,58 @@ private func execute(_ queue: DispatchQueue, monitor: Monitor, f: @escaping () -
 	}
 }
 
+private func retrySync(_ count: Int, do: () throws -> Void, catch: (Error) -> Void) {
+	var r = count
+	repeat {
+		r -= 1
+		do {
+			try `do`()
+			r = -1
+		}
+		catch {
+			if r < 0 {
+				`catch`(error)
+			}
+		}
+	} while r >= 0
+}
+
+private func retryAsync<T, U>(_ count: Int,
+							  monitor: Monitor,
+							  value: T,
+							  resolve: @escaping (U) -> Void,
+							  reject: @escaping (Error) -> Void,
+							  f: @escaping (T, @escaping (U) -> Void,  @escaping (Error) -> Void, inout Asyncable?) -> Void) {
+	var r = count
+	let lock = DispatchSemaphore.Lock()
+	repeat {
+		var pending = true
+		r -= 1
+		
+		let rs = { (value: U) in
+			guard isPending(monitor, pending: &pending) else { return }
+			r = -1
+			lock.signal()
+			monitor.task = nil
+			
+			resolve(value)
+		}
+		let rj = { (error: Error) in
+			guard isPending(monitor, pending: &pending) else { return }
+			lock.signal()
+			monitor.task = nil
+			
+			if r < 0 {
+				reject(error)
+			}
+		}
+		f(value, rs, rj, &monitor.task)
+	
+		lock.wait()
+	}
+	while r >= 0
+}
+
 /// Alias for Promise.
 ///
 /// The alias is used for `async/await` notation.
@@ -145,18 +197,20 @@ public struct Promise<T> {
 	/// - Returns: A new `Promise`
 	/// - SeeAlso: `Promise.resolve()`, `Promise.reject()`
 	@discardableResult
-	public init(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, f: @escaping (() throws -> T)) {
+	public init(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, retry: Int = 0, f: @escaping (() throws -> T)) {
 		let monitor = Monitor()
 		self.init(monitor) { callback in
 			setTimeout(timeout: timeout, callback: callback)
 			execute(queue, monitor: monitor) {
-				do {
-					let output = try f()
-					callback(.success(output))
-				}
-				catch {
-					callback(.failure(error))
-				}
+				retrySync(retry,
+					do: {
+						let output = try f()
+						callback(.success(output))
+					},
+					catch: { error in
+						callback(.failure(error))
+					}
+				)
 			}
 		}
 	}
@@ -187,15 +241,19 @@ public struct Promise<T> {
 	/// - Returns: A new `Promise`
 	/// - SeeAlso: `Asyncable`
 	@discardableResult
-	public init(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0,
+	public init(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, retry: Int = 0, 
 				f: @escaping (@escaping (T) -> Void,  @escaping (Error) -> Void, inout Asyncable?) -> Void) {
 		let monitor = Monitor()
 		self.init(monitor) { callback in
 			setTimeout(timeout: timeout, callback: callback)
 			execute(queue, monitor: monitor) {
-				let resolve = { (value: T) in monitor.task = nil; callback(.success(value)) }
-				let reject = { (error: Error) in monitor.task = nil; callback(.failure(error)) }
-				f(resolve, reject, &monitor.task )
+				retryAsync(retry,
+						   monitor: monitor,
+						   value: (),
+						   resolve: { value in callback(.success(value)) },
+						   reject: { error in callback(.failure(error)) },
+						   f :  { (v: Void, rs, rj, t) in f(rs, rj, &t) }
+				)
 			}
 		}
 	}
@@ -227,9 +285,9 @@ public struct Promise<T> {
 	///		- f: The closure to be invoked on the queue that provides the callbacks to `resolve/reject` the promise
 	/// - Returns: A new `Promise`
 	@discardableResult
-	public init(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0,
+	public init(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0,  retry: Int = 0,
 				f: @escaping ( @escaping (T) -> Void,  @escaping (Error) -> Void) -> Void) {
-		self.init(queue, timeout: timeout) { resolve, reject, task in
+		self.init(queue, timeout: timeout, retry: retry) { resolve, reject, task in
 			f(resolve, reject)
 		}
 	}
@@ -255,7 +313,7 @@ public struct Promise<T> {
 	///		- f: The closure to be invoked on the queue that gets a result and can return a value or throw an error.
 	///	- Returns: A new chained promise.
 	@discardableResult
-	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, f: @escaping ((T) throws -> U)) -> Promise<U> {
+	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, retry: Int = 0, f: @escaping ((T) throws -> U)) -> Promise<U> {
 		autoRun.cancel()
 		return Promise<U>(monitor) { callback in
 			setTimeout(timeout: timeout, callback: callback)
@@ -265,13 +323,15 @@ public struct Promise<T> {
 				switch result {
 					case let .success(input):
 						execute(queue, monitor: self.monitor) {
-							do {
-								let output = try f(input)
-								callback(.success(output))
-							}
-							catch {
-								callback(.failure(error))
-							}
+							retrySync(retry,
+								do: {
+									let output = try f(input)
+									callback(.success(output))
+								},
+								catch: { error in
+									callback(.failure(error))
+								}
+							)
 						}
 					case let .failure(error):
 						callback(.failure(error))
@@ -303,7 +363,7 @@ public struct Promise<T> {
 	///		- f: The closure to be invoked on the queue that gets a result and can return new promise or throw an error.
 	///	- Returns: A new chained promise.
 	@discardableResult
-	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, f: @escaping ((T) throws -> Promise<U>)) -> Promise<U> {
+	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, retry: Int = 0, f: @escaping ((T) throws -> Promise<U>)) -> Promise<U> {
 		autoRun.cancel()
 		return Promise<U>(monitor) { callback in
 			setTimeout(timeout: timeout, callback: callback)
@@ -313,22 +373,24 @@ public struct Promise<T> {
 				switch result {
 					case let .success(value):
 						execute(queue, monitor: self.monitor) {
-							do {
-								let promise = try f(value)
-								promise.autoRun.cancel()
-								promise.f { result in
-									switch result {
-										case let .success(value):
-											callback(.success(value))
-										
-										case let .failure(error):
-											callback(.failure(error))
+							retrySync(retry,
+								  do: {
+									let promise = try f(value)
+									promise.autoRun.cancel()
+									promise.f { result in
+										switch result {
+											case let .success(value):
+												callback(.success(value))
+											
+											case let .failure(error):
+												callback(.failure(error))
+										}
 									}
+								},
+								catch: { error in
+									callback(.failure(error))
 								}
-							}
-							catch {
-								callback(.failure(error))
-							}
+							)
 						}
 					case let .failure(error):
 						callback(.failure(error))
@@ -372,7 +434,7 @@ public struct Promise<T> {
 	///	- Returns: A new chained promise.
 	/// - SeeAlso: `Asyncable`
 	@discardableResult
-	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0,
+	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, retry: Int = 0,
 						f: @escaping (T, @escaping (U) -> Void, @escaping (Error) -> Void, inout Asyncable?) -> Void) -> Promise<U> {
 		autoRun.cancel()
 		return Promise<U>(monitor) { callback in
@@ -383,9 +445,13 @@ public struct Promise<T> {
 				switch result {
 					case let .success(value):
 						execute(queue, monitor: self.monitor) {
-							let resolve = { (value: U) in self.monitor.task = nil; callback(.success(value)) }
-							let reject = { (error: Error) in self.monitor.task = nil; callback(.failure(error)) }
-							f(value, resolve, reject, &self.monitor.task)
+							retryAsync(retry,
+									   monitor: self.monitor,
+									   value: value,
+									   resolve: { value in callback(.success(value)) },
+									   reject: { error in callback(.failure(error)) },
+									   f : f
+							)
 						}
 					case let .failure(error):
 						callback(.failure(error))
@@ -414,9 +480,9 @@ public struct Promise<T> {
 	///		- f: The closure to be invoked on the queue that gets a result and provides the callbacks to resolve or reject the promise.
 	///	- Returns: A new chained promise.
 	@discardableResult
-	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0,
+	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, retry: Int = 0,
 						f: @escaping (T, @escaping (U) -> Void, @escaping (Error) -> Void) -> Void) -> Promise<U> {
-		then(queue, timeout: timeout) { value, resolve, reject, task in
+		then(queue, timeout: timeout, retry: retry) { value, resolve, reject, task in
 			f(value, resolve, reject)
 		}
 	}
@@ -439,7 +505,7 @@ public struct Promise<T> {
 	///		- f: The closure to be invoked on the queue that gets an error and can throw an other error.
 	///	- Returns: A new chained promise.
 	@discardableResult
-	public func `catch`(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, f: @escaping ((Error) throws -> Void)) -> Promise<Void> {
+	public func `catch`(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, retry: Int = 0, f: @escaping ((Error) throws -> Void)) -> Promise<Void> {
 		autoRun.cancel()
 		return Promise<Void>(monitor) { callback in
 			setTimeout(timeout: timeout, callback: callback)
@@ -451,13 +517,15 @@ public struct Promise<T> {
 						callback(.success(()))
 					case let .failure(error):
 						execute(queue, monitor: self.monitor) {
-							do {
-								try f(error)
-								callback(.success(()))
-							}
-							catch {
-								callback(.failure(error))
-							}
+							retrySync(retry,
+								do: {
+									try f(error)
+									callback(.success(()))
+								},
+								catch: { error in
+									callback(.failure(error))
+								}
+							)
 						}
 				}
 			}

@@ -689,6 +689,97 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
+	func testPromise_RetrySync() {
+		wait { expectation in
+			var count = 2
+			Promise<String>(retry: 2) {
+				if count > 0 {
+					count -= 1
+					throw "fail"
+				}
+				return "done1"
+			}
+			.then(retry: 2) { value -> String in
+				XCTAssert(value == "done1")
+				
+				if count < 2 {
+					count += 1
+					throw "fail"
+				}
+				
+				return "done2"
+			}
+			.then(retry: 2) { value -> Promise<String> in
+				XCTAssert(value == "done2")
+				
+				if count > 0 {
+					count -= 1
+					throw "fail"
+				}
+				return Promise.resolve("done3")
+			}
+			.then { value -> Promise<String> in
+				XCTAssert(value == "done3")
+				
+				return Promise<String>(retry: 2) {
+					if count < 2 {
+						count += 1
+						throw "fail"
+					}
+					return "done4"
+				}
+			}
+			.then { value in
+				XCTAssert(value == "done4")
+				throw "catch"
+			}
+			.catch(retry: 2) { error in
+				XCTAssert(error.localizedDescription == "catch")
+				
+				if count > 0 {
+					count -= 1
+					throw "fail"
+				}
+			}
+			.then {
+				expectation.fulfill()
+			}
+			.catch { error in
+				XCTFail()
+			}
+		}
+	}
+	
+	func testPromise_RetryAsync() {
+		wait { expectation in
+			var count = 2
+			Promise<String>(retry: 2) { resolve, reject in
+				if count > 0 {
+					count -= 1
+					reject("fail")
+				}
+				resolve("done1")
+			}
+			.then(retry: 2) { (value, resolve: (String) -> Void, reject) in
+				XCTAssert(value == "done1")
+				
+				if count < 2 {
+					count += 1
+					reject("fail")
+				}
+				
+				resolve("done2")
+			}
+			.then { value in
+				XCTAssert(value == "done2")
+				expectation.fulfill()
+			}
+			.catch { error in
+				XCTFail()
+			}
+		}
+	}
+	
 	func testPromise_All() {
 		wait { expectation in
 			Promise.all(
