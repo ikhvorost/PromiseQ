@@ -88,8 +88,18 @@ class Monitor : Asyncable {
 		}
 	}
 	
-	func wait() {
+	func wait() -> Bool {		
+		if isCancelled {
+			return false
+		}
+		
 		semaphore?.wait()
+		
+		if isCancelled {
+			return false
+		}
+		
+		return true
 	}
 	
 	func resume() {

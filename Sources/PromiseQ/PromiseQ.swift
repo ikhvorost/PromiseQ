@@ -27,29 +27,26 @@ import Foundation
 
 private func setTimeout<T>(timeout: TimeInterval, callback: @escaping (Result<T, Error>) -> Void) {
 	guard timeout > 0 else { return }
-	let workItem = DispatchWorkItem { callback(.failure(PromiseError.timedOut)) }
+	let workItem = DispatchWorkItem {
+		callback(.failure(PromiseError.timedOut))
+	}
 	DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: workItem)
 }
 
-private func isPending(_ monitor: Monitor, pending: inout Bool) -> Bool {
-	return synchronized(monitor) {
-		guard pending else { return false }
-		pending.toggle()
-		return true
+private func pending<T>(monitor: Monitor, callback: @escaping (Result<T, Error>) -> Void) -> (Result<T, Error>) -> Void {
+	var p = true
+	return { (result: Result<T, Error>) -> Void in
+		if (synchronized(monitor) {
+			guard p else { return false }
+			p.toggle()
+			return true
+		}) {
+			callback(result)
+		}
 	}
 }
 
-private func execute(_ queue: DispatchQueue, monitor: Monitor, f: @escaping () -> Void) {
-	guard !monitor.isCancelled else {
-		return
-	}
-	
-	monitor.wait()
-	
-	guard !monitor.isCancelled else {
-		return
-	}
-	
+private func execute(_ queue: DispatchQueue, f: @escaping () -> Void) {
 	if queue.label == String(cString: __dispatch_queue_get_label(nil)) {
 		f()
 	}
@@ -58,9 +55,11 @@ private func execute(_ queue: DispatchQueue, monitor: Monitor, f: @escaping () -
 	}
 }
 
-private func retrySync(_ count: Int, do: () throws -> Void, catch: (Error) -> Void) {
+private func retrySync(_ count: Int, monitor: Monitor, do: () throws -> Void, catch: (Error) -> Void) {
 	var r = count
 	repeat {
+		guard monitor.wait() else { return }
+		
 		r -= 1
 		do {
 			try `do`()
@@ -77,30 +76,29 @@ private func retrySync(_ count: Int, do: () throws -> Void, catch: (Error) -> Vo
 private func retryAsync<T, U>(_ count: Int,
 							  monitor: Monitor,
 							  value: T,
-							  resolve: @escaping (U) -> Void,
-							  reject: @escaping (Error) -> Void,
+							  callback: @escaping (Result<U, Error>) -> Void,
 							  f: @escaping (T, @escaping (U) -> Void,  @escaping (Error) -> Void, inout Asyncable?) -> Void) {
+	
 	var r = count
 	let lock = DispatchSemaphore.Lock()
 	repeat {
-		var pending = true
+		guard monitor.wait() else { return }
+		
 		r -= 1
 		
 		let rs = { (value: U) in
-			guard isPending(monitor, pending: &pending) else { return }
 			r = -1
 			lock.signal()
 			monitor.task = nil
 			
-			resolve(value)
+			callback(.success(value))
 		}
 		let rj = { (error: Error) in
-			guard isPending(monitor, pending: &pending) else { return }
 			lock.signal()
 			monitor.task = nil
 			
 			if r < 0 {
-				reject(error)
+				callback(.failure(error))
 			}
 		}
 		f(value, rs, rj, &monitor.task)
@@ -200,15 +198,16 @@ public struct Promise<T> {
 	public init(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, retry: Int = 0, f: @escaping (() throws -> T)) {
 		let monitor = Monitor()
 		self.init(monitor) { callback in
-			setTimeout(timeout: timeout, callback: callback)
-			execute(queue, monitor: monitor) {
-				retrySync(retry,
+			let pc = pending(monitor: monitor, callback: callback)
+			setTimeout(timeout: timeout, callback: pc)
+			execute(queue) {
+				retrySync(retry, monitor: monitor,
 					do: {
 						let output = try f()
-						callback(.success(output))
+						pc(.success(output))
 					},
 					catch: { error in
-						callback(.failure(error))
+						pc(.failure(error))
 					}
 				)
 			}
@@ -245,15 +244,14 @@ public struct Promise<T> {
 				f: @escaping (@escaping (T) -> Void,  @escaping (Error) -> Void, inout Asyncable?) -> Void) {
 		let monitor = Monitor()
 		self.init(monitor) { callback in
-			setTimeout(timeout: timeout, callback: callback)
-			execute(queue, monitor: monitor) {
+			let pc = pending(monitor: monitor, callback: callback)
+			setTimeout(timeout: timeout, callback: pc)
+			execute(queue) {
 				retryAsync(retry,
 						   monitor: monitor,
 						   value: (),
-						   resolve: { value in callback(.success(value)) },
-						   reject: { error in callback(.failure(error)) },
-						   f :  { (v: Void, rs, rj, t) in f(rs, rj, &t) }
-				)
+						   callback: pc,
+						   f: { (v: Void, rs, rj, t) in f(rs, rj, &t) })
 			}
 		}
 	}
@@ -316,25 +314,24 @@ public struct Promise<T> {
 	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, retry: Int = 0, f: @escaping ((T) throws -> U)) -> Promise<U> {
 		autoRun.cancel()
 		return Promise<U>(monitor) { callback in
-			setTimeout(timeout: timeout, callback: callback)
-			var pending = true
+			let pc = pending(monitor: self.monitor, callback: callback)
+			setTimeout(timeout: timeout, callback: pc)
 			self.f { result in
-				guard isPending(self.monitor, pending: &pending) else { return }
 				switch result {
 					case let .success(input):
-						execute(queue, monitor: self.monitor) {
-							retrySync(retry,
+						execute(queue) {
+							retrySync(retry, monitor: self.monitor,
 								do: {
 									let output = try f(input)
-									callback(.success(output))
+									pc(.success(output))
 								},
 								catch: { error in
-									callback(.failure(error))
+									pc(.failure(error))
 								}
 							)
 						}
 					case let .failure(error):
-						callback(.failure(error))
+						pc(.failure(error))
 				}
 			}
 		}
@@ -366,34 +363,33 @@ public struct Promise<T> {
 	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, retry: Int = 0, f: @escaping ((T) throws -> Promise<U>)) -> Promise<U> {
 		autoRun.cancel()
 		return Promise<U>(monitor) { callback in
-			setTimeout(timeout: timeout, callback: callback)
-			var pending = true
+			let pc = pending(monitor: self.monitor, callback: callback)
+			setTimeout(timeout: timeout, callback: pc)
 			self.f { result in
-				guard isPending(self.monitor, pending: &pending) else { return }
 				switch result {
 					case let .success(value):
-						execute(queue, monitor: self.monitor) {
-							retrySync(retry,
+						execute(queue) {
+							retrySync(retry, monitor: self.monitor,
 								  do: {
 									let promise = try f(value)
 									promise.autoRun.cancel()
 									promise.f { result in
 										switch result {
 											case let .success(value):
-												callback(.success(value))
+												pc(.success(value))
 											
 											case let .failure(error):
-												callback(.failure(error))
+												pc(.failure(error))
 										}
 									}
 								},
 								catch: { error in
-									callback(.failure(error))
+									pc(.failure(error))
 								}
 							)
 						}
 					case let .failure(error):
-						callback(.failure(error))
+						pc(.failure(error))
 				}
 			}
 		}
@@ -438,23 +434,16 @@ public struct Promise<T> {
 						f: @escaping (T, @escaping (U) -> Void, @escaping (Error) -> Void, inout Asyncable?) -> Void) -> Promise<U> {
 		autoRun.cancel()
 		return Promise<U>(monitor) { callback in
-			setTimeout(timeout: timeout, callback: callback)
-			var pending = true
+			let pc = pending(monitor: self.monitor, callback: callback)
+			setTimeout(timeout: timeout, callback: pc)
 			self.f { result in
-				guard isPending(self.monitor, pending: &pending) else { return }
 				switch result {
 					case let .success(value):
-						execute(queue, monitor: self.monitor) {
-							retryAsync(retry,
-									   monitor: self.monitor,
-									   value: value,
-									   resolve: { value in callback(.success(value)) },
-									   reject: { error in callback(.failure(error)) },
-									   f : f
-							)
+						execute(queue) {
+							retryAsync(retry, monitor: self.monitor, value: value, callback: pc, f: f)
 						}
 					case let .failure(error):
-						callback(.failure(error))
+						pc(.failure(error))
 				}
 			}
 		}
@@ -508,22 +497,21 @@ public struct Promise<T> {
 	public func `catch`(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, retry: Int = 0, f: @escaping ((Error) throws -> Void)) -> Promise<Void> {
 		autoRun.cancel()
 		return Promise<Void>(monitor) { callback in
-			setTimeout(timeout: timeout, callback: callback)
-			var pending = true
+			let pc = pending(monitor: self.monitor, callback: callback)
+			setTimeout(timeout: timeout, callback: pc)
 			self.f { result in
-				guard isPending(self.monitor, pending: &pending) else { return }
 				switch result {
 					case .success:
-						callback(.success(()))
+						pc(.success(()))
 					case let .failure(error):
-						execute(queue, monitor: self.monitor) {
-							retrySync(retry,
+						execute(queue) {
+							retrySync(retry, monitor: self.monitor,
 								do: {
 									try f(error)
-									callback(.success(()))
+									pc(.success(()))
 								},
 								catch: { error in
-									callback(.failure(error))
+									pc(.failure(error))
 								}
 							)
 						}
@@ -577,10 +565,9 @@ public struct Promise<T> {
 	public func finally(_ queue: DispatchQueue = .global(), f: @escaping (() -> Void)) -> Promise<T> {
 		autoRun.cancel()
 		return Promise<T>(monitor) { callback in
-			var pending = true
 			self.f { result in
-				guard isPending(self.monitor, pending: &pending) else { return }
-				execute(queue, monitor: self.monitor, f: f)
+				guard self.monitor.wait() else { return }
+				execute(queue, f: f)
 				switch result {
 					case let .success(value):
 						callback(.success(value))

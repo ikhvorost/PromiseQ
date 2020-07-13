@@ -604,7 +604,7 @@ final class PromiseQTests: XCTestCase {
 	
 	func testPromise_TimeOutSync() {
 		wait(count: 4) { expectations in
-			Promise(timeout:0.1) {
+			Promise(timeout: 0.1) {
 				Thread.sleep(forTimeInterval: 0.3)
 			}
 			.then {
@@ -961,14 +961,37 @@ final class PromiseQTests: XCTestCase {
 					resolve(())
 				}
 			}
-			.then {
+			.finally {
 				expectations[1].fulfill()
 			}
-			.finally {
+			.then {
 				expectations[1].fulfill()
 			}
 			
 			asyncAfter(0.4) {
+				p.cancel()
+			}
+		}
+	}
+	
+	func testPromise_CancelTimeout() {
+		wait { expectation in
+			expectation.isInverted = true
+			
+			let p = Promise(timeout: 0.2) { resolve, reject in
+				asyncAfter {
+					resolve(200)
+				}
+			}
+			.then { value in
+				expectation.fulfill()
+			}
+			.catch { error in
+				expectation.fulfill()
+				XCTFail()
+			}
+			
+			asyncAfter(0.1) {
 				p.cancel()
 			}
 		}
