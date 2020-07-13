@@ -190,7 +190,8 @@ public struct Promise<T> {
 	///
 	/// - Parameters:
 	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
-	///		- timeout: The time interval to wait for resolving a promise.
+	///		- timeout: The time interval to wait for resolving the promise.
+	///		- retry: The max number of retry attempts to resolve the promise after rejection.
 	///		- f: The closure to be invoked on the queue that can return a value or throw an error.
 	/// - Returns: A new `Promise`
 	/// - SeeAlso: `Promise.resolve()`, `Promise.reject()`
@@ -234,7 +235,8 @@ public struct Promise<T> {
 	///
 	/// - Parameters:
 	/// 	- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
-	///		- timeout: The time interval to wait for resolving a promise.
+	///		- timeout: The time interval to wait for resolving the promise.
+	///		- retry: The max number of retry attempts to resolve the promise after rejection.
 	///		- f: The closure to be invoked on the queue that provides the callbacks to `resolve/reject` the promise and
 	///		a wrapped asynchronous task to manage.
 	/// - Returns: A new `Promise`
@@ -279,7 +281,8 @@ public struct Promise<T> {
 	///
 	/// - Parameters:
 	/// 	- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
-	///		- timeout: The time interval to wait for resolving a promise.
+	///		- timeout: The time interval to wait for resolving the promise.
+	///		- retry: The max number of retry attempts to resolve the promise after rejection.
 	///		- f: The closure to be invoked on the queue that provides the callbacks to `resolve/reject` the promise
 	/// - Returns: A new `Promise`
 	@discardableResult
@@ -307,7 +310,8 @@ public struct Promise<T> {
 	///
 	///	- Parameters:
 	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
-	///		- timeout: The time interval to wait for resolving a promise.
+	///		- timeout: The time interval to wait for resolving the promise.
+	///		- retry: The max number of retry attempts to resolve the promise after rejection.
 	///		- f: The closure to be invoked on the queue that gets a result and can return a value or throw an error.
 	///	- Returns: A new chained promise.
 	@discardableResult
@@ -356,7 +360,8 @@ public struct Promise<T> {
 	///
 	///	- Parameters:
 	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
-	///		- timeout: The time interval to wait for resolving a promise.
+	///		- timeout: The time interval to wait for resolving the promise.
+	///		- retry: The max number of retry attempts to resolve the promise after rejection.
 	///		- f: The closure to be invoked on the queue that gets a result and can return new promise or throw an error.
 	///	- Returns: A new chained promise.
 	@discardableResult
@@ -424,7 +429,8 @@ public struct Promise<T> {
 	///
 	///	- Parameters:
 	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
-	///		- timeout: The time interval to wait for resolving a promise.
+	///		- timeout: The time interval to wait for resolving the promise.
+	///		- retry: The max number of retry attempts to resolve the promise after rejection.
 	///		- f: The closure to be invoked on the queue that gets a result and provides the callbacks to resolve or
 	///		reject the promise and a wrapped asynchronous task to manage.
 	///	- Returns: A new chained promise.
@@ -465,7 +471,8 @@ public struct Promise<T> {
 	///
 	///	- Parameters:
 	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
-	///		- timeout: The time interval to wait for resolving a promise.
+	///		- timeout: The time interval to wait for resolving the promise.
+	///		- retry: The max number of retry attempts to resolve the promise after rejection.
 	///		- f: The closure to be invoked on the queue that gets a result and provides the callbacks to resolve or reject the promise.
 	///	- Returns: A new chained promise.
 	@discardableResult
@@ -490,7 +497,8 @@ public struct Promise<T> {
 	///
 	///	- Parameters:
 	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
-	///		- timeout: The time interval to wait for resolving a promise.
+	///		- timeout: The time interval to wait for resolving the promise.
+	///		- retry: The max number of retry attempts to resolve the promise after rejection.
 	///		- f: The closure to be invoked on the queue that gets an error and can throw an other error.
 	///	- Returns: A new chained promise.
 	@discardableResult
@@ -522,7 +530,7 @@ public struct Promise<T> {
 	
 	/// The provided closure always runs when the promise is settled: be it resolve or reject.
 	///
-	/// It is a good handler for performing cleanup, e.g. stopping loading indicators, as they are not needed anymore, no matter what the outcome is. That’s very convenient, because finally is not meant to process a promise result. So it passes it through.
+	/// It is a good handler for performing cleanup, e.g. stopping loading indicators, as they are not needed anymore, no matter what the outcome is. That’s very convenient, because finally is not meant to process the promise's result. So it passes it through.
 	///
 	/// The result is passed from `finally` to `then`:
 	///
@@ -627,7 +635,7 @@ public struct Promise<T> {
 	
 	/// Creates a resolved promise with a given value.
 	///
-	/// The method is used for compatibility, when a function is expected to return a promise.
+	/// The method is used for compatibility, when a function is expected to return the promise.
 	///
 	/// 	Promise {
 	///		    return 200
