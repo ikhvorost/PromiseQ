@@ -19,6 +19,7 @@ Fast, powerful and lightweight implementation of Promises for Swift.
 	- [`Promise.race`](#promiserace)
 - [Advanced Usage](#advanced-usage)
 	- [`timeout`](#timeout)
+	- [`retry`](#retry)
 	- [`async/await`](#asyncawait)
 	- [`suspend/resume`](#suspendresume)
 	- [`cancel`](#cancel)
@@ -257,9 +258,9 @@ Promise.race(
 
 ## Advanced Usage
 
-### `timeout:`
+### `timeout`
 
-`timeout` value allows to wait for a promise for a time interval and reject it with `PromiseError.timedOut` error, if it doesn't resolve within the given time.
+`timeout` parameter allows to wait for a promise for a time interval and reject it with `PromiseError.timedOut` error, if it doesn't resolve within the given time.
 
 ``` swift
 Promise(timeout: 10) { // Wait 10 secs for data
@@ -279,6 +280,22 @@ Promise(timeout: 10) { // Wait 10 secs for data
 
 ```
 
+### `retry`
+
+`retry` parameter provides the ability to reattempt a task if the promise is rejected. By default, there is a single attempt to resolve the promise but you can increase the number of attempts with this parameter:
+
+``` swift
+Promise(retry: 3) { // Makes 3 attempts to load data after the rejection
+	try loadData()
+}
+.then { data in
+	parse(data)
+	...
+}
+.catch { error in
+	print(error) // Calls if the `loadData` fails 4 times (1 + 3 retries)
+}
+```
 
 ### `async/await`
 
@@ -340,6 +357,26 @@ let promise = Promise {
 }
 promise.cancel()
 ```
+
+You can also break the promise chain for some conditions to call `cancel` inside a closure of any promise e.g.:
+
+``` swift
+let promise = Promise {
+	return getStatusCode()
+}
+
+promise.then { statusCode in
+	guard statusCode == 200 else {
+		promise.cancel() // Breaks the promise chain
+		return
+	}
+	...
+}
+.then {
+	... // Never runs in case of cancel
+}
+```
+
 
 ### `Asyncable`
 

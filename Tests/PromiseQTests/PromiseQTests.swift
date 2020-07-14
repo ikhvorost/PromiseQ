@@ -129,8 +129,8 @@ func asyncAfter(_ sec: Double = 0.25, closure: @escaping (() -> Void) ) {
 }
 
 /// Make a HTTP request to fetch data by a path
-func fetch(_ path: String) -> Promise<Data> {
-	Promise<Data> { resolve, reject, task in
+func fetch(_ path: String, retry: Int = 0) -> Promise<Data> {
+	Promise<Data>(retry: retry) { resolve, reject, task in
 		guard let url = URL(string: path) else {
 			reject("Bad path")
 			return
@@ -1222,7 +1222,7 @@ final class PromiseQTests: XCTestCase {
 	/// Load avatars of first 30 GitHub users
 	func testPromise_SampleThen() {
 		wait(timeout: 4) { expectation in
-			fetch("https://api.github.com/users")
+			fetch("https://api.github.com/users", retry: 3)
 			.then { usersData in
 				try JSONDecoder().decode([User].self, from: usersData)
 			}
@@ -1253,7 +1253,7 @@ final class PromiseQTests: XCTestCase {
 	func testPromise_SampleAwait() {
 		wait(timeout: 4) { expectation in
 			async {
-				let usersData = try fetch("https://api.github.com/users").await()
+				let usersData = try fetch("https://api.github.com/users", retry: 3).await()
 				
 				let users = try JSONDecoder().decode([User].self, from: usersData)
 				guard users.count > 0 else {
