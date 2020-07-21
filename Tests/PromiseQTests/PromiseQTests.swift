@@ -1,6 +1,5 @@
 
 import XCTest
-import os.log
 
 @testable import PromiseQ
 
@@ -33,24 +32,6 @@ extension DispatchQueue {
 }
 
 extension URLSessionDataTask: Asyncable {
-}
-
-enum ASCIIColor: String {
-    case black = "\u{001B}[0;30m"
-    case red = "\u{001B}[0;31m"
-    case green = "\u{001B}[0;32m"
-    case yellow = "\u{001B}[0;33m"
-    case blue = "\u{001B}[0;34m"
-    case magenta = "\u{001B}[0;35m"
-    case cyan = "\u{001B}[0;36m"
-    case white = "\u{001B}[0;37m"
-    case `default` = "\u{001B}[0;0m"
-}
-
-extension DefaultStringInterpolation {
-    mutating func appendInterpolation<T: CustomStringConvertible>(_ value: T, color: ASCIIColor) {
-        appendInterpolation("\(color.rawValue)\(value)\(ASCIIColor.default.rawValue)")
-    }
 }
 
 // MARK: -
@@ -92,14 +73,6 @@ class TimeOutTask : Asyncable {
 
 // MARK: -
 
-@available(OSX 10.12, *)
-extension OSLog {
-    private static var subsystem = Bundle.main.bundleIdentifier!
-
-    /// Logs the view cycles like viewDidLoad.
-    static let viewCycle = OSLog(subsystem: subsystem, category: "viewcycle")
-}
-
 let debugDateFormatter: DateFormatter = {
 	let dateFormatter = DateFormatter()
 	dateFormatter.dateFormat = "HH:mm:ss:SSS"
@@ -112,14 +85,10 @@ func dlog(_ items: String..., icon: Character = "▶️", file: String = #file, 
 	let time = debugDateFormatter.string(from: Date())
 	
 	print("[\(time)] [DLOG] \(icon) <\(fileName):\(line)>", text)
-	
-//	if #available(OSX 10.12, *) {
-//		os_log("%{public}@", log: OSLog.viewCycle, type: .info, "[\(time)] [DLOG] \(icon) <\(fileName):\(line) \(text)>")
-//	}
 }
 
 func dlog(error: Error, file: String = #file, function: String = #function, line: UInt = #line) {
-	dlog("\("Error: \(error.localizedDescription)", color: .yellow)", icon: "⚠️", file: file, function: function, line: line)
+	dlog("Error: \(error.localizedDescription)", icon: "⚠️", file: file, function: function, line: line)
 }
 
 func asyncAfter(_ sec: Double = 0.25, closure: @escaping (() -> Void) ) {
@@ -189,6 +158,10 @@ final class PromiseQTests: XCTestCase {
 	}
 	
 	// Tests
+	
+	override func setUp() {
+		print(ProcessInfo.processInfo.environment)
+	}
 	
 	func testPromise_AutoRun() {
 		wait(count: 2) { expectations in
