@@ -1,10 +1,8 @@
-name: Swift
+name: build & test
 
 on:
   push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+    branches: [ master, develop ]
 
 jobs:
   build:
@@ -16,4 +14,7 @@ jobs:
     - name: Build
       run: swift build -v
     - name: Run tests
-      run: swift test -v
+      run: |
+        swift test --enable-code-coverage -v
+        xcrun llvm-cov export -format="lcov" .build/debug/PromiseQPackageTests.xctest/contents/macos/PromiseQPackageTests -instr-profile .build/debug/codecov/default.profdata -ignore-filename-regex='Tests' > info.lcov
+        bash <(curl -s https://codecov.io/bash)
