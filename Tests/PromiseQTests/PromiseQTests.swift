@@ -109,7 +109,6 @@ func fetch(_ path: String, retry: Int = 0) -> Promise<Data> {
 		
 		// GitHub auth
 		if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] {
-			print("TOKEN: \(token)")
 			request.addValue("token \(token)", forHTTPHeaderField: "Authorization")
 		}
 		
