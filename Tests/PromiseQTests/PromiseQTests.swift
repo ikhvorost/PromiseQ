@@ -108,7 +108,7 @@ func fetch(_ path: String, retry: Int = 0) -> Promise<Data> {
 		var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
 		
 		// GitHub auth
-		if let token = ProcessInfo.processInfo.environment["secrets.GITHUB_TOKEN"] {
+		if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] {
 			print("TOKEN: \(token)")
 			request.addValue("token \(token)", forHTTPHeaderField: "Authorization")
 		}
