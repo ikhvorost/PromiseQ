@@ -776,6 +776,22 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
+	func testPromise_AllEmpty() {
+		wait { expectation in
+			let promises = [Promise<Int>]()
+			
+			Promise.all(promises)
+			.then { results in
+				XCTFail()
+			}
+			.catch {
+				if case PromiseError.noPromises = $0 {
+					expectation.fulfill()
+				}
+			}
+		}
+	}
+	
 	func testPromise_AllAny() {
 		wait { expectation in
 			Promise.all(
@@ -835,6 +851,22 @@ final class PromiseQTests: XCTestCase {
 			}
 			.catch { error in
 				XCTFail()
+			}
+		}
+	}
+	
+	func testPromise_RaceEmpty() {
+		wait { expectation in
+			let promises = [Promise<Any>]()
+			
+			Promise.race(promises)
+			.then { result in
+				XCTFail()
+			}
+			.catch {
+				if case PromiseError.noPromises = $0 {
+					expectation.fulfill()
+				}
 			}
 		}
 	}

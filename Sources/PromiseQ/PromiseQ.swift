@@ -134,6 +134,9 @@ public enum PromiseError: String, LocalizedError {
 	/// The promise timed out
 	case timedOut = "The promise timed out."
 	
+	/// No promises
+	case noPromises = "No promises."
+	
 	/// A localized message describing what error occurred.
 	public var errorDescription: String? { return rawValue }
 }
@@ -692,12 +695,17 @@ public struct Promise<T> {
 	///	- Returns: A new single promise.
 	/// - SeeAlso: `Promise.race()`
 	public static func all(settled: Bool = false, _ promises:[Promise<T>]) -> Promise<Array<T>> {
-		var results = [Int : T]()
+		var results = [Int : T]()		
 		let mutex = DispatchSemaphore.Mutex()
 		promises.forEach { $0.autoRun.cancel() }
 		let container = AsyncContainer(tasks: promises.map(\.monitor))
 		
 		return Promise<Array<T>> { resolve, reject, task in
+			
+			guard promises.count > 0 else {
+				reject(PromiseError.noPromises)
+				return
+			}
 			
 			task = container
 			
@@ -736,7 +744,7 @@ public struct Promise<T> {
 	///
 	///		Promise.all(settled, [Promise<T>]) -> Promise<Array<T>>
 	///
-	public static func all(settled: Bool = false, _ promises:Promise<T>...) -> Promise<Array<T>> {
+	public static func all(settled: Bool = false, _ promises: Promise<T>...) -> Promise<Array<T>> {
 		return all(settled: settled, promises)
 	}
 	
@@ -850,6 +858,12 @@ extension Promise where T == Any {
 		promises.forEach { $0.autoRun.cancel() }
 		let container = AsyncContainer(tasks: promises.map(\.monitor))
 		return Promise { resolve, reject, task in
+			
+			guard promises.count > 0 else {
+				reject(PromiseError.noPromises)
+				return
+			}
+			
 			task = container
 			
 			promises.forEach {
