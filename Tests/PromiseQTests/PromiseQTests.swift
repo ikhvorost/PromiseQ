@@ -782,12 +782,11 @@ final class PromiseQTests: XCTestCase {
 			
 			Promise.all(promises)
 			.then { results in
-				XCTFail()
+				XCTAssert(results.count == 0)
+				expectation.fulfill()
 			}
-			.catch {
-				if case PromiseError.noPromises = $0 {
-					expectation.fulfill()
-				}
+			.catch { error in
+				XCTFail()
 			}
 		}
 	}
@@ -840,7 +839,11 @@ final class PromiseQTests: XCTestCase {
 					}
 				},
 				Promise.resolve(200),
-				Promise.resolve(3.14)
+				Promise { resolve, reject in
+					asyncAfter {
+						resolve(3.14)
+					}
+				}
 			)
 			.then { results in
 				XCTAssert(results.count == 3)
@@ -861,12 +864,11 @@ final class PromiseQTests: XCTestCase {
 			
 			Promise.race(promises)
 			.then { result in
-				XCTFail()
+				XCTAssert(result is Void)
+				expectation.fulfill()
 			}
-			.catch {
-				if case PromiseError.noPromises = $0 {
-					expectation.fulfill()
-				}
+			.catch { error in
+				XCTFail()
 			}
 		}
 	}
@@ -875,13 +877,18 @@ final class PromiseQTests: XCTestCase {
 		wait { expectation in
 			Promise.race(
 				Promise { resolve, reject in
-					asyncAfter(1) {
-						reject("Error")
+					asyncAfter {
+						resolve(200)
 					}
 				},
 				Promise { resolve, reject in
-					asyncAfter {
-						resolve(200)
+					asyncAfter(0.5) {
+						resolve("Result")
+					}
+				},
+				Promise { resolve, reject in
+					asyncAfter(1) {
+						reject("Error")
 					}
 				}
 			)
@@ -930,6 +937,79 @@ final class PromiseQTests: XCTestCase {
 				expectation.fulfill()
 			}
 			p.cancel()
+		}
+	}
+	
+	func testPromise_AnyEmpty() {
+		wait { expectation in
+			let promises = [Promise<Any>]()
+			
+			Promise.any(promises)
+			.then { result in
+				XCTAssert(result is [Any])
+				XCTAssert((result as! [Any]).count == 0)
+				expectation.fulfill()
+			}
+			.catch { error in
+				XCTFail()
+			}
+		}
+	}
+	
+	func testPromise_Any() {
+		wait { expectation in
+			Promise.any(
+				Promise {
+					throw "Fatal"
+				},
+				Promise { resolve, reject in
+					reject("Fail")
+				},
+				Promise { resolve, reject in
+					asyncAfter {
+						resolve(200)
+					}
+				},
+				Promise { resolve, reject in
+					asyncAfter(0.5) {
+						resolve("OK")
+					}
+				}
+			)
+			.then { result in
+				XCTAssert(result is Int)
+				XCTAssert(result as! Int == 200)
+				expectation.fulfill()
+			}
+			.catch { error in
+				XCTFail()
+			}
+		}
+	}
+	
+	func testPromise_AnyReject() {
+		wait { expectation in
+			Promise.any(
+				Promise { resolve, reject in
+					asyncAfter {
+						reject("Fatal")
+					}
+				},
+				Promise { resolve, reject in
+					reject("Fail")
+				}
+			)
+			.then { result in
+				XCTFail()
+			}
+			.catch { error in
+				if case let PromiseError.aggregate(errors) = error {
+					XCTAssert(errors.count == 2)
+					XCTAssert(errors[0] as? String == "Fatal")
+					XCTAssert(errors[1] as? String == "Fail")
+					expectation.fulfill()
+				}
+			}
 		}
 	}
 	

@@ -130,15 +130,23 @@ private func retryAsync<T, U>(_ count: Int,
 public typealias async = Promise
 
 /// Promise errors
-public enum PromiseError: String, LocalizedError {
-	/// The promise timed out
-	case timedOut = "The promise timed out."
+public enum PromiseError: Error, LocalizedError {
 	
-	/// No promises
-	case noPromises = "No promises."
+	/// The Promise timed out.
+	case timedOut
+
+	/// All Promises rejected.
+	case aggregate([Error])
 	
 	/// A localized message describing what error occurred.
-	public var errorDescription: String? { return rawValue }
+	public var errorDescription: String? {
+		switch self {
+			case .timedOut:
+				return "The Promise timed out."
+			case .aggregate:
+				return "All Promises rejected."
+		}
+	}
 }
 
 /// An asynchronous type that can suspend, resume and cancel it's execution.
@@ -695,7 +703,7 @@ public struct Promise<T> {
 	///	- Returns: A new single promise.
 	/// - SeeAlso: `Promise.race()`
 	public static func all(settled: Bool = false, _ promises:[Promise<T>]) -> Promise<Array<T>> {
-		var results = [Int : T]()		
+		var results = [Int : T]()
 		let mutex = DispatchSemaphore.Mutex()
 		promises.forEach { $0.autoRun.cancel() }
 		let container = AsyncContainer(tasks: promises.map(\.monitor))
@@ -703,7 +711,7 @@ public struct Promise<T> {
 		return Promise<Array<T>> { resolve, reject, task in
 			
 			guard promises.count > 0 else {
-				reject(PromiseError.noPromises)
+				resolve([T]())
 				return
 			}
 			
@@ -738,7 +746,8 @@ public struct Promise<T> {
 		}
 	}
 	
-	/// Executes all promises in parallel and returns a single promise that resolves when all of the promises have been resolved or settled and returns an array of their results.
+	/// Executes all promises in parallel and returns a single promise that resolves when all of the promises have been
+	/// resolved or settled and returns an array of their results.
 	///
 	/// For more details see:
 	///
@@ -753,7 +762,8 @@ public struct Promise<T> {
 extension Promise : Asyncable {
 	/// Suspends the promise or the promise chain.
 	///
-	/// Suspension does not affect the execution of the promise that has already begun it stops execution of next promises in a chain. Call `resume()` to continue executing the promise or the promise chain.
+	/// Suspension does not affect the execution of the promise that has already begun it stops execution of next
+	/// promises in a chain. Call `resume()` to continue executing the promise or the promise chain.
 	///
 	///		// Suspended promise
 	///		Promise {
@@ -826,7 +836,7 @@ extension Promise where T == Void {
 	///	- Parameter error: The error of the rejected promise.
 	///	- Returns: A new rejected promise
 	public static func reject(_ error: Error) -> Promise<Void> {
-		return Promise<Void> { () -> Void in throw error }
+		return Promise { () -> Void in throw error }
 	}
 }
 
@@ -860,7 +870,7 @@ extension Promise where T == Any {
 		return Promise { resolve, reject, task in
 			
 			guard promises.count > 0 else {
-				reject(PromiseError.noPromises)
+				resolve(Void())
 				return
 			}
 			
@@ -882,6 +892,47 @@ extension Promise where T == Any {
 	/// - SeeAlso: Promise.race([Promise<T>]) -> Promise<T>
 	public static func race(_ promises:Promise<T>...) -> Promise<T> {
 		return race(promises)
+	}
+	
+	public static func any(_ promises:[Promise<T>]) -> Promise<T> {
+		var errors = [Int : Error]()
+		let mutex = DispatchSemaphore.Mutex()
+		promises.forEach { $0.autoRun.cancel() }
+		let container = AsyncContainer(tasks: promises.map(\.monitor))
+		
+		return Promise<T> { resolve, reject, task in
+			
+			guard promises.count > 0 else {
+				resolve([Any]())
+				return
+			}
+			
+			task = container
+			
+			func setError(_ i: Int, error: Error) {
+				mutex.wait()
+				defer {
+					mutex.signal()
+				}
+
+				errors[i] = error
+				if errors.count == promises.count {
+					let errors = errors.keys.sorted().map { errors[$0]! }
+					reject(PromiseError.aggregate(errors))
+				}
+			}
+
+			for i in 0..<promises.count {
+				promises[i].then { resolve($0) }
+				.catch {
+					setError(i, error: $0)
+				}
+			}
+		}
+	}
+	
+	public static func any(_ promises: Promise<T>...) -> Promise<T> {
+		return any(promises)
 	}
 }
 
