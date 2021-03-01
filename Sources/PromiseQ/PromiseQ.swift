@@ -135,7 +135,7 @@ public enum PromiseError: Error, LocalizedError {
 	/// The Promise timed out.
 	case timedOut
 
-	/// All Promises rejected.
+	/// All Promises rejected. See `Promise.any()`.
 	case aggregate([Error])
 	
 	/// A localized message describing what error occurred.
@@ -151,7 +151,7 @@ public enum PromiseError: Error, LocalizedError {
 
 /// An asynchronous type that can suspend, resume and cancel it's execution.
 ///
-/// The protocol is the base for asynchronous tasks than can be managed by promises.
+/// The protocol is the base for asynchronous tasks then can be managed by promises.
 public protocol Asyncable {
 	
 	/// Temporarily suspends a task.
@@ -484,7 +484,8 @@ public struct Promise<T> {
 	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
 	///		- timeout: The time interval to wait for resolving the promise.
 	///		- retry: The max number of retry attempts to resolve the promise after rejection.
-	///		- f: The closure to be invoked on the queue that gets a result and provides the callbacks to resolve or reject the promise.
+	///		- f: The closure to be invoked on the queue that gets a result and provides the callbacks to resolve
+	///		or reject the promise.
 	///	- Returns: A new chained promise.
 	@discardableResult
 	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, retry: Int = 0,
@@ -541,7 +542,9 @@ public struct Promise<T> {
 	
 	/// The provided closure always runs when the promise is settled: be it resolve or reject.
 	///
-	/// It is a good handler for performing cleanup, e.g. stopping loading indicators, as they are not needed anymore, no matter what the outcome is. That’s very convenient, because finally is not meant to process the promise's result. So it passes it through.
+	/// It is a good handler for performing cleanup, e.g. stopping loading indicators, as they are not needed anymore,
+	/// no matter what the outcome is. That’s very convenient, because finally is not meant to process the promise's result.
+	/// So it passes it through.
 	///
 	/// The result is passed from `finally` to `then`:
 	///
@@ -661,9 +664,12 @@ public struct Promise<T> {
 		return Promise<T> { return value }
 	}
 	
-	/// Executes all promises in parallel and returns a single promise that resolves when all of the promises have been resolved or settled and returns an array of their results.
+	/// Executes all promises in parallel and returns a single promise that resolves when all of the promises have been
+	/// resolved or settled and returns an array of their results.
 	///
-	/// If `settled=false` the new promise resolves when all listed promises are resolved, and the array of their results becomes its result. If any of the promises is rejected, the promise returned by `Promise.all` immediately rejects with that error.
+	/// If `settled=false` the new promise resolves when all listed promises are resolved, and the array of their results
+	/// becomes its result. If any of the promises is rejected, the promise returned by `Promise.all` immediately rejects
+	/// with that error.
 	///
 	/// 	Promise.all([
 	/// 	    Promise {
@@ -816,7 +822,8 @@ extension Promise : Asyncable {
 	///     }
 	///     p.cancel()
 	///
-	/// Cancelation does not affect the execution of the promise that has already begun it cancels execution of next promises in the chain.
+	/// Cancelation does not affect the execution of the promise that has already begun it cancels execution of next
+	/// promises in the chain.
 	public func cancel() {
 		monitor.cancel()
 	}
@@ -894,6 +901,46 @@ extension Promise where T == Any {
 		return race(promises)
 	}
 	
+	/// Waits only for the first fulfilled promise and gets its result.
+	///
+	///		Promise.any(
+	///			Promise { resolve, reject in
+	///				reject("Error")
+	///			},
+	///			Promise { resolve, reject in
+	///				DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+	///					resolve(200)
+	///				}
+	///			}
+	///		)
+	///		.then {
+	///			print($0)
+	///		}
+	///		// Prints "200"
+	///
+	/// If all of the given promises are rejected,
+	/// then the returned promise is rejected with `PromiseError.aggregate` that stores all promise errors.
+	///
+	///		Promise.any(
+	///			Promise { resolve, reject in
+	///				reject("Error")
+	///			},
+	///			Promise { resolve, reject in
+	///				DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+	///					reject("Fail")
+	///			 	}
+	///		 	}
+	///	 	)
+	///	 	.catch { error in
+	///			if case let PromiseError.aggregate(errors) = error {
+	///				print(errors)
+	///		 	}
+	///	 	}
+	///	 	// Prints '["Error", "Fail"]'
+	///
+	///	- Parameter promises: An array of promises to execute.
+	///	- Returns: A new single promise.
+	/// - SeeAlso: `Promise.race()`
 	public static func any(_ promises:[Promise<T>]) -> Promise<T> {
 		var errors = [Int : Error]()
 		let mutex = DispatchSemaphore.Mutex()
@@ -930,7 +977,15 @@ extension Promise where T == Any {
 			}
 		}
 	}
-	
+
+	/// Waits only for the first fulfilled promise and gets its result. If all of the given promises are rejected,
+	/// then the returned promise is rejected with `PromiseError.aggregate` that stores all promise errors.
+	///
+	/// For more details see:
+	///
+	/// 	Promise.any([Promise<T>]) -> Promise<T>
+	///
+	/// - SeeAlso: Promise.any([Promise<T>]) -> Promise<T>
 	public static func any(_ promises: Promise<T>...) -> Promise<T> {
 		return any(promises)
 	}
