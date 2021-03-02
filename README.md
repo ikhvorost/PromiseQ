@@ -7,6 +7,8 @@
 [![codecov](https://codecov.io/gh/ikhvorost/PromiseQ/branch/master/graph/badge.svg)](https://codecov.io/gh/ikhvorost/PromiseQ)
 [![swift doc coverage](https://img.shields.io/badge/swift%20doc-100%25-f39f37)](https://github.com/SwiftDocOrg/swift-doc)
 
+<p align="center"><img src="promiseq.png" alt="PromiseQ: Promises for Swift"></p>
+
 Fast, powerful and lightweight implementation of Promises for Swift.
 
 - [Features](#features)
