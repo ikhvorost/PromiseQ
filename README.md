@@ -44,7 +44,7 @@ Whole implementation consists on several hundred lines of code.
 PromiseQ is based on `struct` and a stack of callbacks that removes many problems of memory management such as reference cycles etc.
 
 ### Standard API
-Based on JavaScript [Promises/A+](https://promisesaplus.com/) spec, supports `async/await` and it also includes standard methods: `Promise.all`, `Promise.race`, `Promise.resolve/reject`.
+Based on JavaScript [Promises/A+](https://promisesaplus.com/) spec, supports `async/await` and it also includes standard methods: `Promise.all`, `Promise.race`, `Promise.any`, `Promise.resolve/reject`.
 
 ### Suspension
 It is an additional useful feature to `suspend` the execution of promises and `resume` them later. Suspension does not affect the execution of a promise that has already begun it stops execution of next promises.
@@ -575,21 +575,32 @@ For more samples see [PromiseQTests.swift](Tests/ProiseQTests/PromiseQTests.swif
 
 ## Installation
 
-### Swift Package Manager (SPM)
+### XCode project
 
-Select `Xcode` > `File` > `Swift Packages` > `Add Package Dependency...` > Paste `https://github.com/ikhvorost/PromiseQ.git` and then `import PromiseQ` in source files.
+1. Select `Xcode > File > Swift Packages > Add Package Dependency...`
+2. Add package repository: `https://github.com/ikhvorost/PromiseQ.git`
+3. Import the package in your source files: `import PromiseQ`
 
-For Swift packages:
+### Swift Package
+
+Add `PromiseQ` package dependency to your `Package.swift` file:
 
 ``` swift
-dependencies: [
-    .package(url: "https://github.com/ikhvorost/PromiseQ.git", from: "1.0.0")
-]
+let package = Package(
+	...
+	dependencies: [
+    	.package(url: "https://github.com/ikhvorost/PromiseQ.git", from: "1.0.0")
+	],
+	targets: [
+		.target(name: "YourPackage",
+			dependencies: [
+				.product(name: "PromiseQ", package: "PromiseQ")
+			]
+		),
+		...
+	...
+)
 ```
-
-### Manual
-
-Just copy source files to your project.
 
 ## License
 
