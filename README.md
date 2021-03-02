@@ -7,7 +7,7 @@
 [![codecov](https://codecov.io/gh/ikhvorost/PromiseQ/branch/master/graph/badge.svg)](https://codecov.io/gh/ikhvorost/PromiseQ)
 [![swift doc coverage](https://img.shields.io/badge/swift%20doc-100%25-f39f37)](https://github.com/SwiftDocOrg/swift-doc)
 
-<p align="center"><img src="promiseq.png" width="380" alt="PromiseQ: Promises for Swift"></p>
+<p align="center"><img src="promiseq.png" width="380" alt="PromiseQ: Promises with async/await, suspend/resume and cancel features for Swift."></p>
 
 Fast, powerful and lightweight implementation of Promises for Swift.
 
@@ -20,6 +20,7 @@ Fast, powerful and lightweight implementation of Promises for Swift.
 	- [`Promise.resolve/reject`](#promiseresolvereject)
 	- [`Promise.all`](#promiseall)
 	- [`Promise.race`](#promiserace)
+	- [`Promise.any`](#promiseany)
 - [Advanced Usage](#advanced-usage)
 	- [`timeout`](#timeout)
 	- [`retry`](#retry)
@@ -238,7 +239,7 @@ Promise.all(settled: true,
 
 ### `Promise.race`
 
-It makes a promise that waits only for the first settled promise from the given list and gets its result (or error).
+It makes a promise that waits only for the first settled promise from the given list and gets its result or error.
 
 ``` swift
 Promise.race(
@@ -257,6 +258,49 @@ Promise.race(
 	print($0)
 }
 // Prints "200"
+```
+
+### `Promise.any`
+
+It's similar to `Promise.race`, but waits only for the first fulfilled promise and gets its result.
+
+```
+Promise.any(
+	Promise { resolve, reject in
+		reject("Error")
+	},
+	Promise { resolve, reject in
+		DispatchQueue.main.asyncAfter(deadline: .now() + 1) { // Waits 1 sec
+			resolve(200)
+		}
+	}
+)
+.then {
+	print($0)
+}
+// Prints "200"
+
+```
+
+If all of the given promises are rejected, then the returned promise is rejected with `PromiseError.aggregate` – a special error that stores all promise errors.
+
+```
+Promise.any(
+	Promise { resolve, reject in
+		reject("Error")
+	},
+	Promise { resolve, reject in
+		DispatchQueue.main.asyncAfter(deadline: .now() + 1) { // Waits 1 sec
+			reject("Fail")
+	 	}
+ 	}
+)
+.catch { error in
+	if case let PromiseError.aggregate(errors) = error {
+		print(errors)
+ 	}
+}
+// Prints '["Error", "Fail"]'
 ```
 
 ## Advanced Usage
