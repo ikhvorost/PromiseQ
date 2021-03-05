@@ -65,12 +65,19 @@ extension URLSessionDataTask: Asyncable {
 }
 
 public struct HTTPResponse {
-	let response: HTTPURLResponse
-	let data: Data?
+	public let response: HTTPURLResponse
+	public let data: Data?
 	
-//	var ok: Bool {
-//		response.statusCode in 200..<299
-//	}
+	public var ok: Bool {
+		(200...299).contains(response.statusCode)
+	}
+	
+	public var text: String? {
+		guard let data = data else {
+			return nil
+		}
+		return String(data: data, encoding: .utf8)
+	}
 }
 
 public extension URLSession  {
@@ -106,51 +113,51 @@ public extension URLSession  {
 		return fetch(url, method: method, headers: headers, body: body, retry: retry)
 	}
 	
-	func get(_ path: String, headers: [String : String]? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
+	func fetchGet(_ path: String, headers: [String : String]? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
 		fetch(path, method: HTTPMethod.GET.rawValue, headers: headers, retry: retry)
 	}
 	
-	func head(_ path: String, headers: [String : String]? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
+	func fetchHead(_ path: String, headers: [String : String]? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
 		fetch(path, method: HTTPMethod.HEAD.rawValue, headers: headers, retry: retry)
 	}
 	
-	func post(_ path: String, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
+	func fetchPost(_ path: String, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
 		fetch(path, method: HTTPMethod.POST.rawValue, headers: headers, body: body, retry: retry)
 	}
 	
-	func put(_ path: String, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
+	func fetchPut(_ path: String, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
 		fetch(path, method: HTTPMethod.PUT.rawValue, headers: headers, body: body, retry: retry)
 	}
 	
-	func patch(_ path: String, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
+	func fetchPatch(_ path: String, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
 		fetch(path, method: HTTPMethod.PATCH.rawValue, headers: headers, body: body, retry: retry)
 	}
 	
-	func delete(_ path: String, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
+	func fetchDelete(_ path: String, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
 		fetch(path, method: HTTPMethod.DELETE.rawValue, headers: headers, body: body, retry: retry)
 	}
 }
 
-public func get(_ path: String, headers: [String : String]? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
-	URLSession.shared.get(path, headers: headers, retry: retry)
+public func fetchGet(_ path: String, headers: [String : String]? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
+	URLSession.shared.fetchGet(path, headers: headers, retry: retry)
 }
 
-public func head(_ path: String, headers: [String : String]? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
-	URLSession.shared.head(path, headers: headers, retry: retry)
+public func fetchHead(_ path: String, headers: [String : String]? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
+	URLSession.shared.fetchHead(path, headers: headers, retry: retry)
 }
 
-public func post(_ path: String, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
-	URLSession.shared.post(path, headers: headers, body: body, retry: retry)
+public func fetchPost(_ path: String, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
+	URLSession.shared.fetchPost(path, headers: headers, body: body, retry: retry)
 }
 
-public func put(_ path: String, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
-	URLSession.shared.put(path, headers: headers, body: body, retry: retry)
+public func fetchPut(_ path: String, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
+	URLSession.shared.fetchPut(path, headers: headers, body: body, retry: retry)
 }
 
-public func patch(_ path: String, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
-	URLSession.shared.patch(path, headers: headers, body: body, retry: retry)
+public func fetchPatch(_ path: String, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
+	URLSession.shared.fetchPatch(path, headers: headers, body: body, retry: retry)
 }
 
-public func delete(_ path: String, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
-	URLSession.shared.delete(path, headers: headers, body: body, retry: retry)
+public func fetchDelete(_ path: String, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
+	URLSession.shared.fetchDelete(path, headers: headers, body: body, retry: retry)
 }
