@@ -67,6 +67,10 @@ extension URLSessionDataTask: Asyncable {
 public struct HTTPResponse {
 	let response: HTTPURLResponse
 	let data: Data?
+	
+//	var ok: Bool {
+//		response.statusCode in 200..<299
+//	}
 }
 
 public extension URLSession  {
