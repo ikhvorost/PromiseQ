@@ -8,10 +8,10 @@ import XCTest
 #endif
 
 
-/// String errors
-extension String : LocalizedError {
-	public var errorDescription: String? { return self }
-}
+///// String errors
+//extension String : LocalizedError {
+//	public var errorDescription: String? { return self }
+//}
 
 extension DispatchQueue {
 	
@@ -29,9 +29,6 @@ extension DispatchQueue {
 		let label = String(cString: __dispatch_queue_get_label(nil));
 		return Self.queues[label]
 	}
-}
-
-extension URLSessionDataTask: Asyncable {
 }
 
 // MARK: -
@@ -97,48 +94,11 @@ func asyncAfter(_ sec: Double = 0.25, closure: @escaping (() -> Void) ) {
     }
 }
 
-/// Make a HTTP request to fetch data by a path
-func fetch(_ path: String, retry: Int = 0) -> Promise<Data> {
-	Promise<Data>(retry: retry) { resolve, reject, task in
-		guard let url = URL(string: path) else {
-			reject("Bad path")
-			return
-		}
-		
-		var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
-		
-		// GitHub auth
-		if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] {
-			request.addValue("token \(token)", forHTTPHeaderField: "Authorization")
-		}
-		
-		let time = Date()
-		task = URLSession.shared.dataTask(with: request) { data, response, error in
-			guard error == nil else {
-				reject(error!)
-				return
-			}
-			
-			if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-				reject("HTTP \(http.statusCode)")
-				return
-			}
-			
-			guard let data = data else {
-				reject("No Data")
-				return
-			}
-			
-			dlog("Fetch: \"\(path)\"", String(format: "(%0.3f sec)", -time.timeIntervalSinceNow))
-			resolve(data)
-		}
-		task?.resume()
-	}
-}
-
 // MARK: -
 
 final class PromiseQTests: XCTestCase {
+	
+	var github: URLSession!
 	
 	// Url with large data to fetch
 	let url = "https://developer.apple.com/swift/blog/"
@@ -160,7 +120,11 @@ final class PromiseQTests: XCTestCase {
 	// Tests
 	
 	override func setUp() {
-		print(ProcessInfo.processInfo.environment)
+		let configuration = URLSessionConfiguration.default
+		if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] {
+			configuration.httpAdditionalHeaders = ["token \(token)" : "Authorization"]
+		}
+		github = URLSession.init(configuration: configuration)
 	}
 	
 	func testPromise_AutoRun() {
@@ -190,7 +154,7 @@ final class PromiseQTests: XCTestCase {
 	
 	func testPromise_Reject() {
 		wait { expectation in
-			let promise = Promise.reject("Some error")
+			let promise = Promise<Void>.reject("Some error")
 			promise.then {
 				XCTFail()
 			}
@@ -1168,7 +1132,7 @@ final class PromiseQTests: XCTestCase {
 	
 	func testPromise_AsyncableSuspendResume() {
 		wait(timeout: 10) { expectation in
-			let p = fetch(url)
+			let p = get(url)
 			p.then { (data, resolve: @escaping (String)->Void, reject, task) in
 				task = TimeOutTask(timeOut: 1) { resolve("fired") }
 				task?.resume()
@@ -1221,8 +1185,8 @@ final class PromiseQTests: XCTestCase {
 	func testPromise_AsyncableAll() {
 		wait(timeout: 10) { expectation in
 			let p = Promise.all (
-				fetch(url),
-				fetch(url)
+				get(url),
+				get(url)
 			)
 			.then { results in
 				XCTAssert(results.count > 0)
@@ -1304,25 +1268,180 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
+	// MARK: - HTTP
+	
+	struct JSONResponse : Codable {
+		let data: String?
+		let url: String
+	}
+	
+	func testPromise_get_badURL() {
+		wait { expectation in
+			get("")
+			.then { _ in
+				XCTAssert(false)
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Bad url path")
+				expectation.fulfill()
+			}
+		}
+	}
+
+	func testPromise_get() {
+		wait { expectation in
+			let path = "https://httpbin.org/get"
+			get(path)
+			.then { response in
+				guard response.response.statusCode == 200, let data = response.data else {
+					throw "Bad response"
+				}
+				
+				let json = try JSONDecoder().decode(JSONResponse.self, from: data)
+				XCTAssert(json.url == path)
+				
+				expectation.fulfill()
+			}
+			.catch { error in
+				XCTFail()
+			}
+		}
+	}
+	
+	func testPromise_head() {
+		wait { expectation in
+			let path = "https://google.com"
+			head(path)
+			.then { response in
+				guard response.response.statusCode == 200, let data = response.data else {
+					throw "Bad response"
+				}
+				
+				XCTAssert(data.count == 0)
+				
+				expectation.fulfill()
+			}
+			.catch { error in
+				XCTFail()
+			}
+		}
+	}
+	
+	func testPromise_post() {
+		wait { expectation in
+			let path = "https://httpbin.org/post"
+			let text = "hello"
+			post(path, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
+			.then { response in
+				guard response.response.statusCode == 200, let data = response.data else {
+					throw "Bad response"
+				}
+				
+				let json = try JSONDecoder().decode(JSONResponse.self, from: data)
+				XCTAssert(json.data == text)
+				XCTAssert(json.url == path)
+				
+				expectation.fulfill()
+			}
+			.catch { error in
+				XCTFail()
+			}
+		}
+	}
+	
+	func testPromise_put() {
+		wait { expectation in
+			let path = "https://postman-echo.com/put"
+			let text = "hello"
+			put(path, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
+			.then { response in
+				guard response.response.statusCode == 200, let data = response.data else {
+					throw "Bad response"
+				}
+				
+				let json = try JSONDecoder().decode(JSONResponse.self, from: data)
+				XCTAssert(json.data == text)
+				XCTAssert(json.url == path)
+				
+				expectation.fulfill()
+			}
+			.catch { error in
+				XCTFail()
+			}
+		}
+	}
+	
+	func testPromise_patch() {
+		wait { expectation in
+			let path = "https://postman-echo.com/patch"
+			let text = "hello"
+			patch(path, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
+			.then { response in
+				guard response.response.statusCode == 200, let data = response.data else {
+					throw "Bad response"
+				}
+				
+				let json = try JSONDecoder().decode(JSONResponse.self, from: data)
+				XCTAssert(json.data == text)
+				XCTAssert(json.url == path)
+				
+				expectation.fulfill()
+			}
+			.catch { error in
+				XCTFail()
+			}
+		}
+	}
+	
+	func testPromise_delete() {
+		wait { expectation in
+			let path = "https://postman-echo.com/delete"
+			let text = "hello"
+			delete(path, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
+			.then { response in
+				guard response.response.statusCode == 200, let data = response.data else {
+					throw "Bad response"
+				}
+				
+				let json = try JSONDecoder().decode(JSONResponse.self, from: data)
+				XCTAssert(json.data == text)
+				XCTAssert(json.url == path)
+				
+				expectation.fulfill()
+			}
+			.catch { error in
+				XCTFail()
+			}
+		}
+	}
+	
+	// MARK: - Samples
+	
 	/// Load avatars of first 30 GitHub users
 	func testPromise_SampleThen() {
 		wait(timeout: 4) { expectation in
-			fetch("https://api.github.com/users", retry: 3)
-			.then { usersData in
-				try JSONDecoder().decode([User].self, from: usersData)
+			
+			self.github.get("https://api.github.com/users", retry: 3)
+			.then { response -> [User] in
+				guard let data = response.data else {
+					throw "No data"
+				}
+				return try JSONDecoder().decode([User].self, from: data)
 			}
-			.then { users -> Promise<Array<Data>> in
+			.then { users -> Promise<Array<HTTPResponse>> in
 				guard users.count > 0 else {
 					throw "Users list is empty"
 				}
 				return Promise.all(
 					users
 					.map { $0.avatar_url }
-					.map { fetch($0) }
+					.map { self.github.get($0) }
 				)
 			}
-			.then { imagesData in
-				imagesData.map { UIImage(data: $0) }
+			.then { responses in
+				responses
+					.compactMap { $0.data }
+					.map { UIImage(data: $0) }
 			}
 			.then(.main) { images in
 				XCTAssert(DispatchQueue.current == DispatchQueue.main)
@@ -1338,20 +1457,25 @@ final class PromiseQTests: XCTestCase {
 	func testPromise_SampleAwait() {
 		wait(timeout: 4) { expectation in
 			async {
-				let usersData = try fetch("https://api.github.com/users", retry: 3).await()
+				let response = try self.github.get("https://api.github.com/users", retry: 3).await()
+				guard response.response.statusCode == 200, let data = response.data else {
+					throw "No data"
+				}
 				
-				let users = try JSONDecoder().decode([User].self, from: usersData)
+				let users = try JSONDecoder().decode([User].self, from: data)
 				guard users.count > 0 else {
 					throw "Users list is empty"
 				}
 				
-				let imagesData = try async.all(
+				let responses = try async.all(
 					users
 						.map { $0.avatar_url }
-						.map { fetch($0) }
+						.map { self.github.get($0) }
 				).await()
 				
-				let images = imagesData.map { UIImage(data: $0) }
+				let images = responses
+					.compactMap { $0.data }
+					.map { UIImage(data: $0) }
 				
 				async(.main) {
 					XCTAssert(DispatchQueue.current == DispatchQueue.main)
@@ -1361,6 +1485,7 @@ final class PromiseQTests: XCTestCase {
 			}
 			.catch { error in
 				dlog(error: error)
+				XCTFail()
 			}
 		}
 	}

@@ -1,5 +1,5 @@
 //
-//  PromiseQ
+//  PromiseQ.swift
 //
 //  Created by Iurii Khvorost <iurii.khvorost@gmail.com> on 2020/04/01.
 //  Copyright © 2020 Iurii Khvorost. All rights reserved.
@@ -664,6 +664,21 @@ public struct Promise<T> {
 		return Promise<T> { return value }
 	}
 	
+	/// Creates a rejected promise with a given error.
+	///
+	/// 	Promise {
+	///		    throw error
+	///		}
+	///
+	///		// Same as above
+	///		Promise.rejected(error)
+	///
+	///	- Parameter error: The error of the rejected promise.
+	///	- Returns: A new rejected promise
+	public static func reject(_ error: Error) -> Promise<T> {
+		return Promise { () -> T in throw error }
+	}
+	
 	/// Executes all promises in parallel and returns a single promise that resolves when all of the promises have been
 	/// resolved or settled and returns an array of their results.
 	///
@@ -826,24 +841,6 @@ extension Promise : Asyncable {
 	/// promises in the chain.
 	public func cancel() {
 		monitor.cancel()
-	}
-}
-
-extension Promise where T == Void {
-	
-	/// Creates a rejected promise with a given error.
-	///
-	/// 	Promise {
-	///		    throw error
-	///		}
-	///
-	///		// Same as above
-	///		Promise.rejected(error)
-	///
-	///	- Parameter error: The error of the rejected promise.
-	///	- Returns: A new rejected promise
-	public static func reject(_ error: Error) -> Promise<Void> {
-		return Promise { () -> Void in throw error }
 	}
 }
 
