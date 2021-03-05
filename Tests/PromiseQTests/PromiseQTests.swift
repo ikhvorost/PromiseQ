@@ -98,7 +98,12 @@ func asyncAfter(_ sec: Double = 0.25, closure: @escaping (() -> Void) ) {
 
 final class PromiseQTests: XCTestCase {
 	
-	var github: URLSession!
+	var githubAuthHeaders: [String : String]? {
+		if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] {
+			return ["Authorization" : "token \(token)"]
+		}
+		return nil
+	}
 	
 	// Url with large data to fetch
 	let url = "https://developer.apple.com/swift/blog/"
@@ -119,13 +124,8 @@ final class PromiseQTests: XCTestCase {
 	
 	// Tests
 	
-	override func setUp() {
-		let configuration = URLSessionConfiguration.default
-		if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] {
-			configuration.httpAdditionalHeaders = ["token \(token)" : "Authorization"]
-		}
-		github = URLSession.init(configuration: configuration)
-	}
+//	override func setUp() {
+//	}
 	
 	func testPromise_AutoRun() {
 		wait(count: 2) { expectations in
@@ -1421,7 +1421,7 @@ final class PromiseQTests: XCTestCase {
 	func testPromise_SampleThen() {
 		wait(timeout: 4) { expectation in
 			
-			self.github.get("https://api.github.com/users", retry: 3)
+			get("https://api.github.com/users", headers: githubAuthHeaders, retry: 3)
 			.then { response -> [User] in
 				guard let data = response.data else {
 					throw "No data"
@@ -1435,7 +1435,7 @@ final class PromiseQTests: XCTestCase {
 				return Promise.all(
 					users
 					.map { $0.avatar_url }
-					.map { self.github.get($0) }
+					.map { get($0, headers: self.githubAuthHeaders) }
 				)
 			}
 			.then { responses in
@@ -1457,7 +1457,7 @@ final class PromiseQTests: XCTestCase {
 	func testPromise_SampleAwait() {
 		wait(timeout: 4) { expectation in
 			async {
-				let response = try self.github.get("https://api.github.com/users", retry: 3).await()
+				let response = try get("https://api.github.com/users", headers: self.githubAuthHeaders, retry: 3).await()
 				guard response.response.statusCode == 200, let data = response.data else {
 					throw "No data"
 				}
@@ -1470,7 +1470,7 @@ final class PromiseQTests: XCTestCase {
 				let responses = try async.all(
 					users
 						.map { $0.avatar_url }
-						.map { self.github.get($0) }
+						.map { get($0, headers: self.githubAuthHeaders) }
 				).await()
 				
 				let images = responses
