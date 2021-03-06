@@ -1132,7 +1132,7 @@ final class PromiseQTests: XCTestCase {
 	
 	func testPromise_AsyncableSuspendResume() {
 		wait(timeout: 10) { expectation in
-			let p = fetchGet(url)
+			let p = fetch(url)
 			p.then { (data, resolve: @escaping (String)->Void, reject, task) in
 				task = TimeOutTask(timeOut: 1) { resolve("fired") }
 				task?.resume()
@@ -1185,8 +1185,8 @@ final class PromiseQTests: XCTestCase {
 	func testPromise_AsyncableAll() {
 		wait(timeout: 10) { expectation in
 			let p = Promise.all (
-				fetchGet(url),
-				fetchGet(url)
+				fetch(url),
+				fetch(url)
 			)
 			.then { results in
 				XCTAssert(results.count > 0)
@@ -1277,7 +1277,7 @@ final class PromiseQTests: XCTestCase {
 	
 	func testPromise_get_badURL() {
 		wait { expectation in
-			fetchGet("")
+			fetch("")
 			.then { _ in
 				XCTAssert(false)
 			}
@@ -1291,7 +1291,7 @@ final class PromiseQTests: XCTestCase {
 	func testPromise_get() {
 		wait { expectation in
 			let path = "https://httpbin.org/get"
-			fetchGet(path)
+			fetch(path)
 			.then { response in
 				guard response.response.statusCode == 200, let data = response.data else {
 					throw "Bad response"
@@ -1311,7 +1311,7 @@ final class PromiseQTests: XCTestCase {
 	func testPromise_head() {
 		wait { expectation in
 			let path = "https://google.com"
-			fetchHead(path)
+			fetch(path, method: .HEAD)
 			.then { response in
 				guard response.response.statusCode == 200, let data = response.data else {
 					throw "Bad response"
@@ -1331,7 +1331,7 @@ final class PromiseQTests: XCTestCase {
 		wait { expectation in
 			let path = "https://httpbin.org/post"
 			let text = "hello"
-			fetchPost(path, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
+			fetch(path, method: .POST, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
 			.then { response in
 				guard response.response.statusCode == 200, let data = response.data else {
 					throw "Bad response"
@@ -1353,7 +1353,7 @@ final class PromiseQTests: XCTestCase {
 		wait { expectation in
 			let path = "https://postman-echo.com/put"
 			let text = "hello"
-			fetchPut(path, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
+			fetch(path, method: .PUT, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
 			.then { response in
 				guard response.response.statusCode == 200, let data = response.data else {
 					throw "Bad response"
@@ -1375,7 +1375,7 @@ final class PromiseQTests: XCTestCase {
 		wait { expectation in
 			let path = "https://postman-echo.com/patch"
 			let text = "hello"
-			fetchPatch(path, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
+			fetch(path, method: .PATCH, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
 			.then { response in
 				guard response.response.statusCode == 200, let data = response.data else {
 					throw "Bad response"
@@ -1397,7 +1397,7 @@ final class PromiseQTests: XCTestCase {
 		wait { expectation in
 			let path = "https://postman-echo.com/delete"
 			let text = "hello"
-			fetchDelete(path, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
+			fetch(path, method: .DELETE, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
 			.then { response in
 				guard response.response.statusCode == 200, let data = response.data else {
 					throw "Bad response"
@@ -1421,7 +1421,7 @@ final class PromiseQTests: XCTestCase {
 	func testPromise_SampleThen() {
 		wait(timeout: 4) { expectation in
 			
-			fetchGet("https://api.github.com/users", headers: githubAuthHeaders, retry: 3)
+			fetch("https://api.github.com/users", headers: githubAuthHeaders, retry: 3)
 			.then { response -> [User] in
 				guard let data = response.data else {
 					throw "No data"
@@ -1435,7 +1435,7 @@ final class PromiseQTests: XCTestCase {
 				return Promise.all(
 					users
 					.map { $0.avatar_url }
-					.map { fetchGet($0, headers: self.githubAuthHeaders) }
+					.map { fetch($0, headers: self.githubAuthHeaders) }
 				)
 			}
 			.then { responses in
@@ -1457,7 +1457,7 @@ final class PromiseQTests: XCTestCase {
 	func testPromise_SampleAwait() {
 		wait(timeout: 4) { expectation in
 			async {
-				let response = try fetchGet("https://api.github.com/users", headers: self.githubAuthHeaders, retry: 3).await()
+				let response = try fetch("https://api.github.com/users", headers: self.githubAuthHeaders, retry: 3).await()
 				guard response.response.statusCode == 200, let data = response.data else {
 					throw "No data"
 				}
@@ -1470,7 +1470,7 @@ final class PromiseQTests: XCTestCase {
 				let responses = try async.all(
 					users
 					.map { $0.avatar_url }
-					.map { fetchGet($0, headers: self.githubAuthHeaders) }
+					.map { fetch($0, headers: self.githubAuthHeaders) }
 				).await()
 				
 				let images = responses
