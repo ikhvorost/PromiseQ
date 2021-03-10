@@ -1293,7 +1293,7 @@ final class PromiseQTests: XCTestCase {
 			let path = "https://httpbin.org/get"
 			fetch(path)
 			.then { response in
-				guard response.response.statusCode == 200, let data = response.data else {
+				guard response.ok, let data = response.data else {
 					throw "Bad response"
 				}
 				
@@ -1313,7 +1313,7 @@ final class PromiseQTests: XCTestCase {
 			let path = "https://google.com"
 			fetch(path, method: .HEAD)
 			.then { response in
-				guard response.response.statusCode == 200, let data = response.data else {
+				guard response.ok, let data = response.data else {
 					throw "Bad response"
 				}
 				
@@ -1333,7 +1333,7 @@ final class PromiseQTests: XCTestCase {
 			let text = "hello"
 			fetch(path, method: .POST, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
 			.then { response in
-				guard response.response.statusCode == 200, let data = response.data else {
+				guard response.ok, let data = response.data else {
 					throw "Bad response"
 				}
 				
@@ -1355,7 +1355,7 @@ final class PromiseQTests: XCTestCase {
 			let text = "hello"
 			fetch(path, method: .PUT, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
 			.then { response in
-				guard response.response.statusCode == 200, let data = response.data else {
+				guard response.ok, let data = response.data else {
 					throw "Bad response"
 				}
 				
@@ -1377,7 +1377,7 @@ final class PromiseQTests: XCTestCase {
 			let text = "hello"
 			fetch(path, method: .PATCH, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
 			.then { response in
-				guard response.response.statusCode == 200, let data = response.data else {
+				guard response.ok, let data = response.data else {
 					throw "Bad response"
 				}
 				
@@ -1399,7 +1399,7 @@ final class PromiseQTests: XCTestCase {
 			let text = "hello"
 			fetch(path, method: .DELETE, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
 			.then { response in
-				guard response.response.statusCode == 200, let data = response.data else {
+				guard response.ok, let data = response.data else {
 					throw "Bad response"
 				}
 				
@@ -1411,6 +1411,28 @@ final class PromiseQTests: XCTestCase {
 			}
 			.catch { error in
 				XCTFail()
+			}
+		}
+	}
+	
+	func testPromise_download() {
+		wait(count:2, timeout: 3) { expectations in
+			download("http://speedtest.tele2.net/1MB.zip") { percent in
+				if percent == 1.0 {
+					expectations[0].fulfill()
+				}
+			}
+			.then { response in
+				guard response.ok, let location = response.location else {
+					throw "Bad response"
+				}
+				
+				XCTAssert(FileManager.default.fileExists(atPath: location.path))
+				expectations[1].fulfill()
+			}
+			.catch { error in
+				XCTFail()
+				dlog(error: error)
 			}
 		}
 	}
@@ -1457,7 +1479,7 @@ final class PromiseQTests: XCTestCase {
 		wait(timeout: 4) { expectation in
 			async {
 				let response = try fetch("https://api.github.com/users", headers: self.githubAuthHeaders, retry: 3).await()
-				guard response.response.statusCode == 200, let data = response.data else {
+				guard response.ok, let data = response.data else {
 					throw "No data"
 				}
 				
