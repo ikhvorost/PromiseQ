@@ -1420,7 +1420,6 @@ final class PromiseQTests: XCTestCase {
 	/// Load avatars of first 30 GitHub users
 	func testPromise_SampleThen() {
 		wait(timeout: 4) { expectation in
-			
 			fetch("https://api.github.com/users", headers: githubAuthHeaders, retry: 3)
 			.then { response -> [User] in
 				guard let data = response.data else {
@@ -1428,20 +1427,20 @@ final class PromiseQTests: XCTestCase {
 				}
 				return try JSONDecoder().decode([User].self, from: data)
 			}
-			.then { users -> Promise<Array<HTTPResponse>> in
+			.then { users -> Promise<Array<Response>> in
 				guard users.count > 0 else {
 					throw "Users list is empty"
 				}
 				return Promise.all(
 					users
 					.map { $0.avatar_url }
-					.map { fetch($0, headers: self.githubAuthHeaders) }
+					.map { fetch($0, headers: self.githubAuthHeaders, type: .download) }
 				)
 			}
 			.then { responses in
 				responses
-					.compactMap { $0.data }
-					.map { UIImage(data: $0) }
+					.compactMap { $0.location }
+					.compactMap { UIImage(contentsOf: $0) }
 			}
 			.then(.main) { images in
 				XCTAssert(DispatchQueue.current == DispatchQueue.main)
@@ -1467,15 +1466,14 @@ final class PromiseQTests: XCTestCase {
 					throw "Users list is empty"
 				}
 				
-				let responses = try async.all(
-					users
-					.map { $0.avatar_url }
-					.map { fetch($0, headers: self.githubAuthHeaders) }
-				).await()
-				
-				let images = responses
-					.compactMap { $0.data }
-					.map { UIImage(data: $0) }
+				let images =
+					try async.all(
+						users
+						.map { $0.avatar_url }
+						.map { fetch($0, headers: self.githubAuthHeaders, type: .download) }
+					).await()
+					.compactMap { $0.location }
+					.compactMap { UIImage(contentsOf: $0) }
 				
 				async(.main) {
 					XCTAssert(DispatchQueue.current == DispatchQueue.main)
