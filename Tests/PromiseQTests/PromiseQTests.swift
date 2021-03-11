@@ -1268,7 +1268,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	// MARK: - HTTP
+	// MARK: - fetch
 	
 	struct JSONResponse : Codable {
 		let data: String?
@@ -1282,7 +1282,7 @@ final class PromiseQTests: XCTestCase {
 				XCTAssert(false)
 			}
 			.catch { error in
-				XCTAssert(error.localizedDescription == "Bad url path")
+				XCTAssert(error.localizedDescription == "Bad path")
 				expectation.fulfill()
 			}
 		}
@@ -1293,8 +1293,12 @@ final class PromiseQTests: XCTestCase {
 			let path = "https://httpbin.org/get"
 			fetch(path)
 			.then { response in
-				guard response.ok, let data = response.data else {
-					throw "Bad response"
+				guard response.ok else {
+					throw response.statusCodeDescription
+				}
+				
+				guard let data = response.data else {
+					throw "No data"
 				}
 				
 				let json = try JSONDecoder().decode(JSONResponse.self, from: data)
@@ -1313,8 +1317,12 @@ final class PromiseQTests: XCTestCase {
 			let path = "https://google.com"
 			fetch(path, method: .HEAD)
 			.then { response in
-				guard response.ok, let data = response.data else {
-					throw "Bad response"
+				guard response.ok else {
+					throw response.statusCodeDescription
+				}
+				
+				guard let data = response.data else {
+					throw "No data"
 				}
 				
 				XCTAssert(data.count == 0)
@@ -1333,8 +1341,12 @@ final class PromiseQTests: XCTestCase {
 			let text = "hello"
 			fetch(path, method: .POST, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
 			.then { response in
-				guard response.ok, let data = response.data else {
-					throw "Bad response"
+				guard response.ok else {
+					throw response.statusCodeDescription
+				}
+				
+				guard let data = response.data else {
+					throw "No data"
 				}
 				
 				let json = try JSONDecoder().decode(JSONResponse.self, from: data)
@@ -1355,8 +1367,12 @@ final class PromiseQTests: XCTestCase {
 			let text = "hello"
 			fetch(path, method: .PUT, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
 			.then { response in
-				guard response.ok, let data = response.data else {
-					throw "Bad response"
+				guard response.ok else {
+					throw response.statusCodeDescription
+				}
+				
+				guard let data = response.data else {
+					throw "No data"
 				}
 				
 				let json = try JSONDecoder().decode(JSONResponse.self, from: data)
@@ -1377,8 +1393,12 @@ final class PromiseQTests: XCTestCase {
 			let text = "hello"
 			fetch(path, method: .PATCH, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
 			.then { response in
-				guard response.ok, let data = response.data else {
-					throw "Bad response"
+				guard response.ok else {
+					throw response.statusCodeDescription
+				}
+				
+				guard let data = response.data else {
+					throw "No data"
 				}
 				
 				let json = try JSONDecoder().decode(JSONResponse.self, from: data)
@@ -1399,8 +1419,12 @@ final class PromiseQTests: XCTestCase {
 			let text = "hello"
 			fetch(path, method: .DELETE, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
 			.then { response in
-				guard response.ok, let data = response.data else {
-					throw "Bad response"
+				guard response.ok else {
+					throw response.statusCodeDescription
+				}
+				
+				guard let data = response.data else {
+					throw "No data"
 				}
 				
 				let json = try JSONDecoder().decode(JSONResponse.self, from: data)
@@ -1442,10 +1466,36 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_upload() {
+	func testPromise_uploadData() {
 		wait(count:2, timeout: 3) { expectations in
 			let data = Data(Array(repeating: UInt8(0), count: 1024 * 1024)) // 1MB
-			upload("http://speedtest.tele2.net/upload.php", body: data) { percent in
+			upload("http://speedtest.tele2.net/upload.php", data: data) { percent in
+				print(percent)
+				if percent == 1.0 {
+					expectations[0].fulfill()
+				}
+			}
+			.then { response in
+				guard response.ok else {
+					throw response.statusCodeDescription
+				}
+				
+				expectations[1].fulfill()
+			}
+			.catch { error in
+				XCTFail()
+				dlog(error: error)
+			}
+		}
+	}
+	
+	func testPromise_uploadFile() {
+		wait(count:2, timeout: 3) { expectations in
+			let url = URL(fileURLWithPath: NSTemporaryDirectory() + "upload.tmp")
+			let data = Data(Array(repeating: UInt8(0), count: 1024 * 1024)) // 1MB
+			try? data.write(to: url)
+			
+			upload("http://speedtest.tele2.net/upload.php", file: url) { percent in
 				print(percent)
 				if percent == 1.0 {
 					expectations[0].fulfill()
@@ -1484,13 +1534,13 @@ final class PromiseQTests: XCTestCase {
 				return Promise.all(
 					users
 					.map { $0.avatar_url }
-					.map { fetch($0, headers: self.githubAuthHeaders, type: .download) }
+					.map { fetch($0, headers: self.githubAuthHeaders) }
 				)
 			}
 			.then { responses in
 				responses
-					.compactMap { $0.location }
-					.compactMap { UIImage(contentsOf: $0) }
+					.compactMap { $0.data }
+					.compactMap { UIImage(data: $0)}
 			}
 			.then(.main) { images in
 				XCTAssert(DispatchQueue.current == DispatchQueue.main)
@@ -1520,10 +1570,10 @@ final class PromiseQTests: XCTestCase {
 					try async.all(
 						users
 						.map { $0.avatar_url }
-						.map { fetch($0, headers: self.githubAuthHeaders, type: .download) }
+						.map { fetch($0, headers: self.githubAuthHeaders) }
 					).await()
-					.compactMap { $0.location }
-					.compactMap { UIImage(contentsOf: $0) }
+					.compactMap { $0.data }
+					.compactMap { UIImage(data: $0) }
 				
 				async(.main) {
 					XCTAssert(DispatchQueue.current == DispatchQueue.main)

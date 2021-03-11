@@ -1,5 +1,5 @@
 //
-//  URLSession+PromiseQ.swift
+//  URLSession+fetch.swift
 //  
 //  Created by Iurii Khvorost <iurii.khvorost@gmail.com> on 2021/03/02.
 //  Copyright © 2021 Iurii Khvorost. All rights reserved.
@@ -56,12 +56,6 @@ public enum HTTPMethod : String {
 	case TRACE
 }
 
-public enum TaskType : String {
-	case data
-	case download
-	//case upload
-}
-
 /// String errors
 extension String : LocalizedError {
 	public var errorDescription: String? { return self }
@@ -77,10 +71,10 @@ fileprivate extension URL {
 	/// Renaming to prevent deleting by the system
 	mutating func rename() -> URL {
 		let name = "pq_" + lastPathComponent
-		var rv = URLResourceValues()
-		rv.name = name
+		var values = URLResourceValues()
+		values.name = name
 		do {
-			try setResourceValues(rv)
+			try setResourceValues(values)
 			return (self as NSURL).deletingLastPathComponent!.appendingPathComponent(name)
 		}
 		catch {
@@ -134,66 +128,45 @@ public class Response {
 
 public extension URLSession  {
 	
-	func fetch(_ request: URLRequest, type: TaskType = .data, retry: Int = 0) -> Promise<Response> {
+	func fetch(_ request: URLRequest, retry: Int = 0) -> Promise<Response> {
 		Promise<Response>(retry: retry) { resolve, reject, task in
-			
-			switch type {
-				case .data:
-					task = self.dataTask(with: request) { data, response, error in
-						guard error == nil else {
-							reject(error!)
-							return
-						}
-						
-						guard let response = response as? HTTPURLResponse else {
-							reject("No response")
-							return
-						}
-						
-						resolve(Response(response: response, data: data, location: nil))
-					}
-					
-				case .download:
-					task = self.downloadTask(with: request) { url, response, error in
-						guard error == nil else {
-							reject(error!)
-							return
-						}
-						
-						guard var url = url else {
-							reject("No URL.")
-							return
-						}
-						
-						let response = Response(response: response as! HTTPURLResponse, data: nil, location: url.rename())
-						resolve(response)
-					}
+			task = self.dataTask(with: request) { data, response, error in
+				guard error == nil else {
+					reject(error!)
+					return
 				}
-			
+				
+				guard let response = response as? HTTPURLResponse else {
+					reject("No response")
+					return
+				}
+				
+				resolve(Response(response: response, data: data))
+			}
 			task?.resume()
 		}
 	}
 	
-	func fetch(_ url: URL, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, type: TaskType = .data, retry: Int = 0) -> Promise<Response> {
+	func fetch(_ url: URL, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<Response> {
 		var request = URLRequest(url: url)
 		request.httpMethod = method.rawValue
 		request.allHTTPHeaderFields = headers
 		request.httpBody = body
 		
-		return fetch(request, type: type, retry: retry)
+		return fetch(request, retry: retry)
 	}
 	
-	func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, type: TaskType = .data, retry: Int = 0) -> Promise<Response> {
+	func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<Response> {
 		guard let url = URL(string: path) else {
-			return Promise<Response>.reject("Bad URL path.")
+			return Promise<Response>.reject("Bad path")
 		}
-		return fetch(url, method: method, headers: headers, body: body, type: type, retry: retry)
+		return fetch(url, method: method, headers: headers, body: body, retry: retry)
 	}
 
 }
 
-public func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, type: TaskType = .data, retry: Int = 0) -> Promise<Response> {
-	URLSession.shared.fetch(path, method: method, headers: headers, body: body, type: type, retry: retry)
+public func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<Response> {
+	URLSession.shared.fetch(path, method: method, headers: headers, body: body, retry: retry)
 }
 
 // MARK: - Download
@@ -224,6 +197,8 @@ private class SessionDownloadDelegate: NSObject, URLSessionDownloadDelegate {
 	}
 	
 	func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+		session.invalidateAndCancel()
+		
 		guard let response = downloadTask.response as? HTTPURLResponse else {
 			reject("No response")
 			return
@@ -232,7 +207,6 @@ private class SessionDownloadDelegate: NSObject, URLSessionDownloadDelegate {
 		var url = location
 		resolve(Response(response: response, location: url.rename()))
 	}
-
 }
 
 public func download(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0, progress: Progress?) -> Promise<Response> {
@@ -271,7 +245,7 @@ private class SessionTaskDelegate: NSObject, URLSessionTaskDelegate {
 	}
 }
 
-public func upload(_ path: String, body: Data, method: HTTPMethod = .POST, headers: [String : String]? = nil, retry: Int = 0, progress: Progress?) -> Promise<Response> {
+private func upload(_ path: String, data: Data?, file: URL?, method: HTTPMethod = .POST, headers: [String : String]? = nil, retry: Int = 0, progress: Progress?) -> Promise<Response> {
 	guard let url = URL(string: path) else {
 		return Promise<Response>.reject("Bad url path")
 	}
@@ -284,7 +258,9 @@ public func upload(_ path: String, body: Data, method: HTTPMethod = .POST, heade
 		let delegate = SessionTaskDelegate(progress: progress)
 		let session = URLSession.init(configuration: .default, delegate: delegate, delegateQueue: nil)
 		
-		task = session.uploadTask(with: request, from: body) { data, response, error in
+		let completion = { (data: Data?, response: URLResponse?, error: Error?) in
+			session.invalidateAndCancel()
+			
 			guard error == nil else {
 				reject(error!)
 				return
@@ -297,6 +273,21 @@ public func upload(_ path: String, body: Data, method: HTTPMethod = .POST, heade
 			
 			resolve(Response(response: response, data: data))
 		}
+		
+		task = file != nil
+			? session.uploadTask(with: request, fromFile: file!, completionHandler: completion)
+			: session.uploadTask(with: request, from: data, completionHandler: completion)
 		task?.resume()
 	}
+}
+
+public func upload(_ path: String, data: Data, method: HTTPMethod = .POST, headers: [String : String]? = nil, retry: Int = 0, progress: Progress?) -> Promise<Response> {
+	return upload(path, data: data, file: nil, method: method, headers: headers, retry: retry, progress: progress)
+}
+
+public func upload(_ path: String, file: URL, method: HTTPMethod = .POST, headers: [String : String]? = nil, retry: Int = 0, progress: Progress?) -> Promise<Response> {
+	guard FileManager.default.fileExists(atPath: file.path) else {
+		return Promise<Response>.reject("File not found")
+	}
+	return upload(path, data: nil, file: file, method: method, headers: headers, retry: retry, progress: progress)
 }
