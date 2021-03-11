@@ -170,7 +170,7 @@ public extension URLSession  {
 					}
 					
 				case .token(let token):
-					headers["Authorization"] = "token \(token))"
+					headers["Authorization"] = "token \(token)"
 			}
 		}
 		
