@@ -1418,16 +1418,44 @@ final class PromiseQTests: XCTestCase {
 	func testPromise_download() {
 		wait(count:2, timeout: 3) { expectations in
 			download("http://speedtest.tele2.net/1MB.zip") { percent in
+				//print(percent)
 				if percent == 1.0 {
 					expectations[0].fulfill()
 				}
 			}
 			.then { response in
-				guard response.ok, let location = response.location else {
-					throw "Bad response"
+				guard response.ok else {
+					throw response.statusCodeDescription
+				}
+				
+				guard let location = response.location else {
+					throw "No location"
 				}
 				
 				XCTAssert(FileManager.default.fileExists(atPath: location.path))
+				expectations[1].fulfill()
+			}
+			.catch { error in
+				XCTFail()
+				dlog(error: error)
+			}
+		}
+	}
+	
+	func testPromise_upload() {
+		wait(count:2, timeout: 3) { expectations in
+			let data = Data(Array(repeating: UInt8(0), count: 1024 * 1024)) // 1MB
+			upload("http://speedtest.tele2.net/upload.php", body: data) { percent in
+				print(percent)
+				if percent == 1.0 {
+					expectations[0].fulfill()
+				}
+			}
+			.then { response in
+				guard response.ok else {
+					throw response.statusCodeDescription
+				}
+				
 				expectations[1].fulfill()
 			}
 			.catch { error in
