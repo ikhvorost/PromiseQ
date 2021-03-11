@@ -1418,7 +1418,7 @@ final class PromiseQTests: XCTestCase {
 	func testPromise_download() {
 		wait(count:2, timeout: 3) { expectations in
 			download("http://speedtest.tele2.net/1MB.zip") { percent in
-				//print(percent)
+				print(percent)
 				if percent == 1.0 {
 					expectations[0].fulfill()
 				}

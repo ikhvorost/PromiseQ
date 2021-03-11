@@ -228,7 +228,7 @@ private class SessionDownloadDelegate: NSObject, URLSessionDownloadDelegate {
 			reject("No response")
 			return
 		}
-		
+
 		var url = location
 		resolve(Response(response: response, location: url.rename()))
 	}
@@ -258,14 +258,9 @@ public func download(_ path: String, method: HTTPMethod = .GET, headers: [String
 // MARK: - Upload
 
 private class SessionTaskDelegate: NSObject, URLSessionTaskDelegate {
-
-	let resolve: (Response) -> Void
-	let reject: (Error) -> Void
 	let progress: Progress?
 
-	init(resolve: @escaping (Response) -> Void, reject: @escaping (Error) -> Void, progress: Progress?) {
-		self.resolve = resolve
-		self.reject = reject
+	init(progress: Progress?) {
 		self.progress = progress
 		super.init()
 	}
@@ -274,20 +269,6 @@ private class SessionTaskDelegate: NSObject, URLSessionTaskDelegate {
 		let percent = Double(totalBytesSent) / Double(totalBytesExpectedToSend)
 		progress?(percent)
 	}
-	
-	func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-		guard error == nil else {
-			reject(error!)
-			return
-		}
-		
-		guard let response = task.response as? HTTPURLResponse else {
-			reject("No response")
-			return
-		}
-		
-		resolve(Response(response: response))
-	}
 }
 
 public func upload(_ path: String, body: Data, method: HTTPMethod = .POST, headers: [String : String]? = nil, retry: Int = 0, progress: Progress?) -> Promise<Response> {
@@ -295,15 +276,27 @@ public func upload(_ path: String, body: Data, method: HTTPMethod = .POST, heade
 		return Promise<Response>.reject("Bad url path")
 	}
 	
-	var request = URLRequest(url: url, cachePolicy: .reloadIgnoringCacheData)
+	var request = URLRequest(url: url)
 	request.httpMethod = method.rawValue
 	request.allHTTPHeaderFields = headers
 	
 	return Promise<Response>(retry: retry) { resolve, reject, task in
-		let delegate = SessionTaskDelegate(resolve: resolve, reject: reject, progress: progress)
+		let delegate = SessionTaskDelegate(progress: progress)
 		let session = URLSession.init(configuration: .default, delegate: delegate, delegateQueue: nil)
 		
-		task = session.uploadTask(with: request, from: body)
+		task = session.uploadTask(with: request, from: body) { data, response, error in
+			guard error == nil else {
+				reject(error!)
+				return
+			}
+			
+			guard let response = response as? HTTPURLResponse else {
+				reject("No response")
+				return
+			}
+			
+			resolve(Response(response: response, data: data))
+		}
 		task?.resume()
 	}
 }
