@@ -98,9 +98,9 @@ func asyncAfter(_ sec: Double = 0.25, closure: @escaping (() -> Void) ) {
 
 final class PromiseQTests: XCTestCase {
 	
-	var githubAuthHeaders: [String : String]? {
+	var githubAuth: Auth? {
 		if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] {
-			return ["Authorization" : "token \(token)"]
+			return .token(token)
 		}
 		return nil
 	}
@@ -1515,16 +1515,61 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
+	func testPromise_fetchBasicAuthUnauthorized() {
+		wait { expectation in
+			fetch("https://postman-echo.com/basic-auth", method: .GET)
+			.then { response in
+				guard response.ok else {
+					throw response.statusCodeDescription
+				}
+				
+				XCTFail()
+			}
+			.catch { error in
+				expectation.fulfill()
+				XCTAssert(error.localizedDescription == "HTTP 401: unauthorized")
+			}
+		}
+	}
+	
+	func testPromise_fetchBasicAuth() {
+		wait { expectation in
+			let path = "https://postman-echo.com/basic-auth"
+			fetch(path, method: .GET, auth: .basic(username: "postman", password: "password"))
+			.then { response in
+				guard response.ok else {
+					throw response.statusCodeDescription
+				}
+				
+				guard let data = response.data else {
+					throw "No data"
+				}
+				
+				XCTAssert(data.count > 0)
+				expectation.fulfill()
+			}
+			.catch { error in
+				XCTFail()
+				dlog(error.localizedDescription)
+			}
+		}
+	}
+	
 	// MARK: - Samples
 	
 	/// Load avatars of first 30 GitHub users
 	func testPromise_SampleThen() {
 		wait(timeout: 4) { expectation in
-			fetch("https://api.github.com/users", headers: githubAuthHeaders, retry: 3)
+			fetch("https://api.github.com/users", auth: githubAuth, retry: 3)
 			.then { response -> [User] in
+				guard response.ok else {
+					throw response.statusCodeDescription
+				}
+				
 				guard let data = response.data else {
 					throw "No data"
 				}
+				
 				return try JSONDecoder().decode([User].self, from: data)
 			}
 			.then { users -> Promise<Array<Response>> in
@@ -1534,7 +1579,7 @@ final class PromiseQTests: XCTestCase {
 				return Promise.all(
 					users
 					.map { $0.avatar_url }
-					.map { fetch($0, headers: self.githubAuthHeaders) }
+					.map { fetch($0) }
 				)
 			}
 			.then { responses in
@@ -1556,8 +1601,12 @@ final class PromiseQTests: XCTestCase {
 	func testPromise_SampleAwait() {
 		wait(timeout: 4) { expectation in
 			async {
-				let response = try fetch("https://api.github.com/users", headers: self.githubAuthHeaders, retry: 3).await()
-				guard response.ok, let data = response.data else {
+				let response = try fetch("https://api.github.com/users", auth: self.githubAuth, retry: 3).await()
+				guard response.ok else {
+					throw response.statusCodeDescription
+				}
+				
+				guard let data = response.data else {
 					throw "No data"
 				}
 				
@@ -1570,7 +1619,7 @@ final class PromiseQTests: XCTestCase {
 					try async.all(
 						users
 						.map { $0.avatar_url }
-						.map { fetch($0, headers: self.githubAuthHeaders) }
+						.map { fetch($0) }
 					).await()
 					.compactMap { $0.data }
 					.compactMap { UIImage(data: $0) }
