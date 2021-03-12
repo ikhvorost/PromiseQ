@@ -98,9 +98,9 @@ func asyncAfter(_ sec: Double = 0.25, closure: @escaping (() -> Void) ) {
 
 final class PromiseQTests: XCTestCase {
 	
-	var githubAuth: Auth? {
+	var githubHeaders: [String : String]? {
 		if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] {
-			return .token(token)
+			return ["Authorization" : "token \(token)"]
 		}
 		return nil
 	}
@@ -1515,52 +1515,12 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_fetchBasicAuthUnauthorized() {
-		wait { expectation in
-			fetch("https://postman-echo.com/basic-auth", method: .GET)
-			.then { response in
-				guard response.ok else {
-					throw response.statusCodeDescription
-				}
-				
-				XCTFail()
-			}
-			.catch { error in
-				expectation.fulfill()
-				XCTAssert(error.localizedDescription == "HTTP 401: unauthorized")
-			}
-		}
-	}
-	
-	func testPromise_fetchBasicAuth() {
-		wait { expectation in
-			let path = "https://postman-echo.com/basic-auth"
-			fetch(path, method: .GET, auth: .basic(username: "postman", password: "password"))
-			.then { response in
-				guard response.ok else {
-					throw response.statusCodeDescription
-				}
-				
-				guard let data = response.data else {
-					throw "No data"
-				}
-				
-				XCTAssert(data.count > 0)
-				expectation.fulfill()
-			}
-			.catch { error in
-				XCTFail()
-				dlog(error.localizedDescription)
-			}
-		}
-	}
-	
 	// MARK: - Samples
 	
 	/// Load avatars of first 30 GitHub users
 	func testPromise_SampleThen() {
 		wait(timeout: 4) { expectation in
-			fetch("https://api.github.com/users", auth: githubAuth, retry: 3)
+			fetch("https://api.github.com/users", headers: githubHeaders, retry: 3)
 			.then { response -> [User] in
 				guard response.ok else {
 					throw response.statusCodeDescription
@@ -1601,7 +1561,7 @@ final class PromiseQTests: XCTestCase {
 	func testPromise_SampleAwait() {
 		wait(timeout: 4) { expectation in
 			async {
-				let response = try fetch("https://api.github.com/users", auth: self.githubAuth, retry: 3).await()
+				let response = try fetch("https://api.github.com/users", headers: self.githubHeaders, retry: 3).await()
 				guard response.ok else {
 					throw response.statusCodeDescription
 				}

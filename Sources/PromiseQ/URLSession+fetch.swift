@@ -84,14 +84,6 @@ fileprivate extension URL {
 	}
 }
 
-public enum Auth {
-	case basic(username: String, password: String)
-//	case digest(username: String, password: String)
-//	case hawk
-//	case oauth
-	case token(String)
-}
-
 public class Response {
 	public let response: HTTPURLResponse
 	public let data: Data?
@@ -155,42 +147,26 @@ public extension URLSession  {
 		}
 	}
 	
-	func fetch(_ url: URL, method: HTTPMethod = .GET, headers: [String : String]? = nil, auth: Auth? = nil, body: Data? = nil, retry: Int = 0) -> Promise<Response> {
+	func fetch(_ url: URL, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<Response> {
 		var request = URLRequest(url: url)
 		request.httpMethod = method.rawValue
-		
-		var headers = headers ?? [String : String]()
-		
-		if let auth = auth {
-			switch auth {
-				case .basic(let username, let password):
-					let data = Data("\(username):\(password)".utf8).base64EncodedData()
-					if let base64 = String(data: data, encoding: .utf8) {
-						headers["Authorization"] = "Basic \(base64))"
-					}
-					
-				case .token(let token):
-					headers["Authorization"] = "token \(token)"
-			}
-		}
-		
 		request.allHTTPHeaderFields = headers
 		request.httpBody = body
 		
 		return fetch(request, retry: retry)
 	}
 	
-	func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, auth: Auth? = nil, body: Data? = nil, retry: Int = 0) -> Promise<Response> {
+	func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<Response> {
 		guard let url = URL(string: path) else {
 			return Promise<Response>.reject("Bad path")
 		}
-		return fetch(url, method: method, headers: headers, auth: auth, body: body, retry: retry)
+		return fetch(url, method: method, headers: headers, body: body, retry: retry)
 	}
 
 }
 
-public func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, auth: Auth? = nil, body: Data? = nil, retry: Int = 0) -> Promise<Response> {
-	URLSession.shared.fetch(path, method: method, headers: headers, auth: auth, body: body, retry: retry)
+public func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<Response> {
+	URLSession.shared.fetch(path, method: method, headers: headers, body: body, retry: retry)
 }
 
 // MARK: - Download
