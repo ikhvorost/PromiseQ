@@ -25,22 +25,20 @@
 
 import Foundation
 
-private func setTimeout<T>(timeout: TimeInterval, callback: @escaping (Result<T, Error>) -> Void) {
+private func setTimeout<T>(timeout: TimeInterval, pending: @escaping (Result<T, Error>) -> Void) {
 	guard timeout > 0 else { return }
-	let workItem = DispatchWorkItem {
-		callback(.failure(PromiseError.timedOut))
+	let work = DispatchWorkItem {
+		pending(.failure(PromiseError.timedOut))
 	}
-	DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: workItem)
+	DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + timeout, execute: work)
 }
 
 private func pending<T>(monitor: Monitor, callback: @escaping (Result<T, Error>) -> Void) -> (Result<T, Error>) -> Void {
 	var p = true
 	return { (result: Result<T, Error>) -> Void in
-		if (synchronized(monitor) {
-			guard p else { return false }
+		synchronized(monitor) {
+			guard p else { return }
 			p.toggle()
-			return true
-		}) {
 			callback(result)
 		}
 	}
@@ -55,10 +53,10 @@ private func execute(_ queue: DispatchQueue, f: @escaping () -> Void) {
 	}
 }
 
-private func retrySync(_ count: Int, monitor: Monitor, do: () throws -> Void, catch: (Error) -> Void) {
+private func retrySync(_ count: Int, monitor: Monitor?, do: () throws -> Void, catch: (Error) -> Void) {
 	var r = count
 	repeat {
-		guard monitor.wait() else { return }
+		guard monitor == nil || monitor!.wait() else { return }
 		
 		r -= 1
 		do {
@@ -76,7 +74,7 @@ private func retrySync(_ count: Int, monitor: Monitor, do: () throws -> Void, ca
 private func retryAsync<T, U>(_ count: Int,
 							  monitor: Monitor,
 							  value: T,
-							  callback: @escaping (Result<U, Error>) -> Void,
+							  pending: @escaping (Result<U, Error>) -> Void,
 							  f: @escaping (T, @escaping (U) -> Void,  @escaping (Error) -> Void, inout Asyncable?) -> Void) {
 	
 	var r = count
@@ -91,14 +89,14 @@ private func retryAsync<T, U>(_ count: Int,
 			lock.signal()
 			monitor.task = nil
 			
-			callback(.success(value))
+			pending(.success(value))
 		}
 		let rj = { (error: Error) in
 			lock.signal()
 			monitor.task = nil
 			
 			if r < 0 {
-				callback(.failure(error))
+				pending(.failure(error))
 			}
 		}
 		f(value, rs, rj, &monitor.task)
@@ -138,6 +136,9 @@ public enum PromiseError: Error, LocalizedError {
 	/// All Promises rejected. See `Promise.any()`.
 	case aggregate([Error])
 	
+	/// The Promise cancelled.
+	case cancelled
+	
 	/// A localized message describing what error occurred.
 	public var errorDescription: String? {
 		switch self {
@@ -145,6 +146,8 @@ public enum PromiseError: Error, LocalizedError {
 				return "The Promise timed out."
 			case .aggregate:
 				return "All Promises rejected."
+			case .cancelled:
+				return "All Promises cancelled."
 		}
 	}
 }
@@ -211,8 +214,9 @@ public struct Promise<T> {
 		let monitor = Monitor()
 		self.init(monitor) { callback in
 			let pc = pending(monitor: monitor, callback: callback)
-			setTimeout(timeout: timeout, callback: pc)
+			setTimeout(timeout: timeout, pending: pc)
 			execute(queue) {
+				monitor.reject = { pc(.failure(PromiseError.cancelled)) }
 				retrySync(retry, monitor: monitor,
 					do: {
 						let output = try f()
@@ -258,12 +262,13 @@ public struct Promise<T> {
 		let monitor = Monitor()
 		self.init(monitor) { callback in
 			let pc = pending(monitor: monitor, callback: callback)
-			setTimeout(timeout: timeout, callback: pc)
+			setTimeout(timeout: timeout, pending: pc)
 			execute(queue) {
+				monitor.reject = { pc(.failure(PromiseError.cancelled)) }
 				retryAsync(retry,
 						   monitor: monitor,
 						   value: (),
-						   callback: pc,
+						   pending: pc,
 						   f: { (v: Void, rs, rj, t) in f(rs, rj, &t) })
 			}
 		}
@@ -330,12 +335,13 @@ public struct Promise<T> {
 		autoRun.cancel()
 		return Promise<U>(monitor) { callback in
 			let pc = pending(monitor: self.monitor, callback: callback)
-			setTimeout(timeout: timeout, callback: pc)
+			setTimeout(timeout: timeout, pending: pc)
 			self.f { result in
+				monitor.reject = { pc(.failure(PromiseError.cancelled)) }
 				switch result {
 					case let .success(input):
 						execute(queue) {
-							retrySync(retry, monitor: self.monitor,
+							retrySync(retry, monitor: monitor,
 								do: {
 									let output = try f(input)
 									pc(.success(output))
@@ -380,12 +386,13 @@ public struct Promise<T> {
 		autoRun.cancel()
 		return Promise<U>(monitor) { callback in
 			let pc = pending(monitor: self.monitor, callback: callback)
-			setTimeout(timeout: timeout, callback: pc)
+			setTimeout(timeout: timeout, pending: pc)
 			self.f { result in
+				monitor.reject = { pc(.failure(PromiseError.cancelled)) }
 				switch result {
 					case let .success(value):
 						execute(queue) {
-							retrySync(retry, monitor: self.monitor,
+							retrySync(retry, monitor: monitor,
 								  do: {
 									let promise = try f(value)
 									promise.autoRun.cancel()
@@ -452,12 +459,13 @@ public struct Promise<T> {
 		autoRun.cancel()
 		return Promise<U>(monitor) { callback in
 			let pc = pending(monitor: self.monitor, callback: callback)
-			setTimeout(timeout: timeout, callback: pc)
+			setTimeout(timeout: timeout, pending: pc)
 			self.f { result in
+				monitor.reject = { pc(.failure(PromiseError.cancelled)) }
 				switch result {
 					case let .success(value):
 						execute(queue) {
-							retryAsync(retry, monitor: self.monitor, value: value, callback: pc, f: f)
+							retryAsync(retry, monitor: self.monitor, value: value, pending: pc, f: f)
 						}
 					case let .failure(error):
 						pc(.failure(error))
@@ -518,14 +526,15 @@ public struct Promise<T> {
 		autoRun.cancel()
 		return Promise<Void>(monitor) { callback in
 			let pc = pending(monitor: self.monitor, callback: callback)
-			setTimeout(timeout: timeout, callback: pc)
+			setTimeout(timeout: timeout, pending: pc)
 			self.f { result in
+				monitor.reject = { pc(.failure(PromiseError.cancelled)) }
 				switch result {
 					case .success:
 						pc(.success(()))
 					case let .failure(error):
 						execute(queue) {
-							retrySync(retry, monitor: self.monitor,
+							retrySync(retry, monitor: nil,
 								do: {
 									try f(error)
 									pc(.success(()))
@@ -588,7 +597,7 @@ public struct Promise<T> {
 		autoRun.cancel()
 		return Promise<T>(monitor) { callback in
 			self.f { result in
-				guard self.monitor.wait() else { return }
+				monitor.wait()
 				execute(queue, f: f)
 				switch result {
 					case let .success(value):

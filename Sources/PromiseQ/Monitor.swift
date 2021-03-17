@@ -63,53 +63,42 @@ class Atomic<T> {
 
 class Monitor : Asyncable {
 	@Atomic private var cancelled = false
-	@Atomic private var semaphore: DispatchSemaphore?
-	
-	@Atomic var task: Asyncable?
-	
-	var isCancelled: Bool {
-		get { cancelled }
+	@Atomic var reject: (() -> Void)? {
+		didSet {
+			if self.cancelled {
+				reject?()
+			}
+		}
 	}
+	@Atomic private var semaphore: DispatchSemaphore?
+	@Atomic var task: Asyncable?
 	
 	func cancel() {
 		cancelled = true
+		reject?()
 		task?.cancel()
 	}
 	
 	func suspend() {
-		if let t = task {
-			t.suspend()
-		}
-		else {
-			guard semaphore == nil else {
-				return
-			}
+		task?.suspend()
+		
+		if semaphore == nil {
 			semaphore = .Lock()
 		}
 	}
 	
-	func wait() -> Bool {		
-		if isCancelled {
-			return false
-		}
-		
+	@discardableResult
+	func wait() -> Bool {
+		guard !cancelled else { return false }
 		semaphore?.wait()
-		
-		if isCancelled {
-			return false
-		}
-		
-		return true
+		return !cancelled
 	}
 	
 	func resume() {
-		if let t = task {
-			t.resume()
-		}
-		else {
-			semaphore?.signal()
-			semaphore = nil
-		}
+		task?.resume()
+		
+		semaphore?.signal()
+		semaphore = nil
 	}
 }
 

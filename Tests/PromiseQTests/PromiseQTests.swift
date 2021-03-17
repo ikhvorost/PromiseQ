@@ -565,10 +565,9 @@ final class PromiseQTests: XCTestCase {
 					dlog(error: error)
 				}
 			}
-			.then(timeout: 0.1) {
-				Promise<Int> {
-					Thread.sleep(forTimeInterval: 0.3)
-					return 200
+			.then(timeout: 0.1) { _, resolve, reject in
+				asyncAfter {
+					resolve(())
 				}
 			}
 			.then { value in
@@ -890,20 +889,6 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_Cancel() {
-		wait { expectation in
-			expectation.isInverted = true
-		
-			let p = Promise {
-				expectation.fulfill()
-			}
-			.catch { error in
-				expectation.fulfill()
-			}
-			p.cancel()
-		}
-	}
-	
 	func testPromise_AnyEmpty() {
 		wait { expectation in
 			let promises = [Promise<Any>]()
@@ -977,10 +962,59 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
+	func testPromise_Cancel() {
+		wait(count: 4) { expectations in
+			let p = Promise {
+				XCTFail()
+			}
+			.then {
+				XCTFail()
+			}
+			.finally {
+				expectations[0].fulfill()
+			}
+			.catch { error in
+				if case PromiseError.cancelled = error {
+					expectations[1].fulfill()
+				}
+			}
+			.finally {
+				expectations[2].fulfill()
+			}
+			.then {
+				XCTFail()
+			}
+			.catch { error in
+				if case PromiseError.cancelled = error {
+					expectations[3].fulfill()
+				}
+			}
+			
+			DispatchQueue.global().async { p.cancel() }
+		}
+	}
+	
+	func testPromise_CancelDouble() {
+		wait { expectation in
+			let p = Promise {
+				XCTFail()
+			}
+			.then {
+				XCTFail()
+			}
+			.catch { error in
+				if case PromiseError.cancelled = error {
+					expectation.fulfill()
+				}
+			}
+			
+			p.cancel()
+			p.cancel()
+		}
+	}
+	
 	func testPromise_CancelInside() {
 		wait(count: 2) { expectations in
-			expectations[1].isInverted = true
-			
 			let p = Promise {
 				expectations[0].fulfill()
 			}
@@ -988,14 +1022,18 @@ final class PromiseQTests: XCTestCase {
 				p.cancel()
 			}
 			.then {
-				expectations[1].fulfill()
+				XCTFail()
+			}
+			.catch { error in
+				if case PromiseError.cancelled = error {
+					expectations[1].fulfill()
+				}
 			}
 		}
 	}
 	
 	func testPromise_CancelAsync() {
-		wait(count: 2) { expectations in
-			expectations[1].isInverted = true
+		wait(count: 3) { expectations in
 		
 			let p = Promise { resolve, reject in
 				asyncAfter {
@@ -1010,11 +1048,19 @@ final class PromiseQTests: XCTestCase {
 					resolve(())
 				}
 			}
+			.then {
+				XCTFail()
+			}
 			.finally {
 				expectations[1].fulfill()
 			}
 			.then {
-				expectations[1].fulfill()
+				XCTFail()
+			}
+			.catch { error in
+				if case PromiseError.cancelled = error {
+					expectations[2].fulfill()
+				}
 			}
 			
 			asyncAfter(0.4) {
@@ -1025,22 +1071,19 @@ final class PromiseQTests: XCTestCase {
 	
 	func testPromise_CancelTimeout() {
 		wait { expectation in
-			expectation.isInverted = true
 			
-			let p = Promise(timeout: 0.2) { resolve, reject in
-				asyncAfter {
-					resolve(200)
-				}
+			let p = Promise(timeout: 10) { resolve, reject in
 			}
-			.then { value in
-				expectation.fulfill()
-			}
-			.catch { error in
-				expectation.fulfill()
+			.then {
 				XCTFail()
 			}
+			.catch { error in
+				if case PromiseError.cancelled = error {
+					expectation.fulfill()
+				}
+			}
 			
-			asyncAfter(0.1) {
+			asyncAfter {
 				p.cancel()
 			}
 		}
@@ -1050,25 +1093,31 @@ final class PromiseQTests: XCTestCase {
 		wait { expectation in
 			expectation.isInverted = true
 		
-			Promise {
+			let p = Promise {
 				expectation.fulfill()
 			}
-			.suspend()
+			.finally {
+				expectation.fulfill()
+			}
+			
+			p.suspend()
 		}
 	}
 	
 	func testPromise_SuspendInside() {
-		wait(count: 2) { expectations in
-			expectations[1].isInverted = true
-		
+		wait { expectation in
+			expectation.isInverted = true
+			
 			let p = Promise {
-				expectations[0].fulfill()
 			}
 			p.then {
 				p.suspend()
 			}
+			.finally {
+				expectation.fulfill()
+			}
 			.then {
-				expectations[1].fulfill()
+				expectation.fulfill()
 			}
 		}
 	}
@@ -1095,18 +1144,19 @@ final class PromiseQTests: XCTestCase {
 				expectation.fulfill()
 			}
 			
-			asyncAfter(0.4) {
+			asyncAfter {
 				p.suspend()
 				p.suspend() // Must be skipped
 			}
 			
-			asyncAfter(0.75) {
+			asyncAfter(0.5) {
+				p.resume()
 				p.resume()
 			}
 		}
 	}
 	
-	func testPromise_SuspendCancel() {
+	func testPromise_SuspendCancelResume() {
 		wait { expectation in
 			expectation.isInverted = true
 			
@@ -1287,7 +1337,7 @@ final class PromiseQTests: XCTestCase {
 			}
 		}
 	}
-
+	
 	func testPromise_get() {
 		wait { expectation in
 			let path = "https://httpbin.org/get"
@@ -1439,6 +1489,92 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
+	func testPromise_fetchSuspend() {
+		wait (timeout: 2){ expectation in
+			expectation.isInverted = true
+			
+			let promise = fetch("https://google.com")
+			.then { response in
+				expectation.fulfill()
+			}
+			.catch { error in
+				expectation.fulfill()
+			}
+			
+			asyncAfter(0.1) {
+				promise.suspend()
+			}
+		}
+	}
+	
+	func testPromise_fetchSuspendResume() {
+		wait(timeout: 2) { expectation in
+			
+			let promise = fetch("https://google.com")
+			.then { response in
+				expectation.fulfill()
+			}
+			.catch { error in
+				XCTFail()
+			}
+			
+			asyncAfter {
+				promise.suspend()
+			}
+			
+			asyncAfter(0.5) {
+				promise.resume()
+			}
+		}
+	}
+	
+	func testPromise_fetchCancel() {
+		wait (timeout: 2){ expectation in
+			
+			let promise = fetch("https://google.com")
+			.then { response in
+				XCTFail()
+			}
+			.catch { error in
+				if case PromiseError.cancelled = error {
+					expectation.fulfill()
+				}
+			}
+			
+			asyncAfter(0.1) {
+				promise.cancel()
+			}
+		}
+	}
+	
+	func testPromise_fetchSuspendCancelResume() {
+		wait(count:2, timeout: 2) { expectations in
+			expectations[0].isInverted = true
+			
+			let promise = fetch("https://google.com")
+			.then { response in
+				expectations[0].fulfill()
+			}
+			.catch { error in
+				if case PromiseError.cancelled = error {
+					expectations[1].fulfill()
+				}
+			}
+			
+			asyncAfter(0.1) {
+				promise.suspend()
+			}
+			
+			asyncAfter(0.3) {
+				promise.cancel()
+			}
+			
+			asyncAfter(0.6) {
+				promise.resume()
+			}
+		}
+	}
+	
 	func testPromise_download() {
 		wait(count:2, timeout: 3) { expectations in
 			download("http://speedtest.tele2.net/1MB.zip") { percent in
@@ -1462,6 +1598,31 @@ final class PromiseQTests: XCTestCase {
 			.catch { error in
 				XCTFail()
 				dlog(error: error)
+			}
+		}
+	}
+	
+	func testPromise_downloadCancel() {
+		wait(timeout: 3) { expectation in
+			
+			let promise = download("http://speedtest.tele2.net/1MB.zip") { percent in
+				print(percent)
+				
+				if percent == 1.0 {
+					XCTFail()
+				}
+			}
+			.then { response in
+				XCTFail()
+			}
+			.catch { error in
+				if case PromiseError.cancelled = error {
+					expectation.fulfill()
+				}
+			}
+			
+			asyncAfter(0.5) {
+				promise.cancel()
 			}
 		}
 	}

@@ -264,7 +264,7 @@ Promise.race(
 
 It's similar to `Promise.race`, but waits only for the first fulfilled promise and gets its result.
 
-```
+``` swift
 Promise.any(
 	Promise { resolve, reject in
 		reject("Error")
@@ -284,7 +284,7 @@ Promise.any(
 
 If all of the given promises are rejected, then the returned promise is rejected with `PromiseError.aggregate` – a special error that stores all promise errors.
 
-```
+``` swift
 Promise.any(
 	Promise { resolve, reject in
 		reject("Error")

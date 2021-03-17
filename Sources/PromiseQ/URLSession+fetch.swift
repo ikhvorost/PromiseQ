@@ -152,6 +152,7 @@ public extension URLSession  {
 		request.httpMethod = method.rawValue
 		request.allHTTPHeaderFields = headers
 		request.httpBody = body
+		request.cachePolicy = .reloadIgnoringLocalCacheData
 		
 		return fetch(request, retry: retry)
 	}
