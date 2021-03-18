@@ -1697,8 +1697,8 @@ final class PromiseQTests: XCTestCase {
 	
 	func testPromise_download() {
 		wait(count:2, timeout: 3) { expectations in
-			download("http://speedtest.tele2.net/1MB.zip") { percent in
-				print(percent)
+			download("http://speedtest.tele2.net/1MB.zip") { task, written, total in
+				let percent = Double(written) / Double(total)
 				if percent == 1.0 {
 					expectations[0].fulfill()
 				}
@@ -1725,9 +1725,8 @@ final class PromiseQTests: XCTestCase {
 	func testPromise_downloadCancel() {
 		wait(timeout: 3) { expectation in
 			
-			let promise = download("http://speedtest.tele2.net/1MB.zip") { percent in
-				print(percent)
-				
+			let promise = download("http://speedtest.tele2.net/1MB.zip") { task, written, total  in
+				let percent = Double(written) / Double(total)
 				if percent == 1.0 {
 					XCTFail()
 				}
@@ -1750,8 +1749,8 @@ final class PromiseQTests: XCTestCase {
 	func testPromise_uploadData() {
 		wait(count:2, timeout: 3) { expectations in
 			let data = Data(Array(repeating: UInt8(0), count: 1024 * 1024)) // 1MB
-			upload("http://speedtest.tele2.net/upload.php", data: data) { percent in
-				print(percent)
+			upload("http://speedtest.tele2.net/upload.php", data: data) { task, sent, total in
+				let percent = Double(sent) / Double(total)
 				if percent == 1.0 {
 					expectations[0].fulfill()
 				}
@@ -1776,8 +1775,8 @@ final class PromiseQTests: XCTestCase {
 			let data = Data(Array(repeating: UInt8(0), count: 1024 * 1024)) // 1MB
 			try? data.write(to: url)
 			
-			upload("http://speedtest.tele2.net/upload.php", file: url) { percent in
-				print(percent)
+			upload("http://speedtest.tele2.net/upload.php", file: url) { task, sent, total in
+				let percent = Double(sent) / Double(total)
 				if percent == 1.0 {
 					expectations[0].fulfill()
 				}

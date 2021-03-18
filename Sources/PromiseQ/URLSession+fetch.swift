@@ -172,7 +172,7 @@ public func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : 
 
 // MARK: - Download
 
-public typealias Progress = (Double) -> Void
+public typealias Progress = (URLSessionTask, Int64, Int64) -> Void
 
 private class SessionDownloadDelegate: NSObject, URLSessionDownloadDelegate {
 	let resolve: (Response) -> Void
@@ -187,8 +187,7 @@ private class SessionDownloadDelegate: NSObject, URLSessionDownloadDelegate {
 	}
 	
 	func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-		let percent = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
-		progress?(percent)
+		progress?(downloadTask, totalBytesWritten, totalBytesExpectedToWrite)
 	}
 	
 	func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
@@ -241,12 +240,12 @@ private class SessionTaskDelegate: NSObject, URLSessionTaskDelegate {
 	}
 
 	func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
-		let percent = Double(totalBytesSent) / Double(totalBytesExpectedToSend)
-		progress?(percent)
+		progress?(task, totalBytesSent, totalBytesExpectedToSend)
 	}
 }
 
-private func upload(_ path: String, data: Data?, file: URL?, method: HTTPMethod = .POST, headers: [String : String]? = nil, retry: Int = 0, progress: Progress?) -> Promise<Response> {
+private func upload(_ path: String, data: Data?, file: URL?, method: HTTPMethod = .POST, headers: [String : String]? = nil,
+					retry: Int = 0, progress: Progress?) -> Promise<Response> {
 	guard let url = URL(string: path) else {
 		return Promise<Response>.reject("Bad url path")
 	}
