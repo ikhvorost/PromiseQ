@@ -739,6 +739,37 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
+	func testPromise_AllCancel() {
+		wait(count:2) { expectations in
+			expectations[0].isInverted = true
+			
+			let promise = Promise.all(
+				Promise { resolve, reject in
+					asyncAfter {
+						resolve("Hello")
+					}
+				},
+				Promise { resolve, reject in
+					asyncAfter {
+						resolve("World")
+					}
+				}
+			)
+			.then { results in
+				expectations[0].fulfill()
+			}
+			.catch { error in
+				if case PromiseError.cancelled = error {
+					expectations[1].fulfill()
+				}
+			}
+			
+			asyncAfter(0.1) {
+				promise.cancel()
+			}
+		}
+	}
+	
 	func testPromise_AllEmpty() {
 		wait { expectation in
 			let promises = [Promise<Int>]()
@@ -832,6 +863,37 @@ final class PromiseQTests: XCTestCase {
 			}
 			.catch { error in
 				XCTFail()
+			}
+		}
+	}
+	
+	func testPromise_RaceCancel() {
+		wait(count: 2) { expectations in
+			expectations[0].isInverted = true
+			
+			let promise = Promise.race(
+				Promise { resolve, reject in
+					asyncAfter {
+						resolve("Hello")
+					}
+				},
+				Promise { resolve, reject in
+					asyncAfter {
+						resolve("World")
+					}
+				}
+			)
+			.then { results in
+				expectations[0].fulfill()
+			}
+			.catch { error in
+				if case PromiseError.cancelled = error {
+					expectations[1].fulfill()
+				}
+			}
+			
+			asyncAfter(0.1) {
+				promise.cancel()
 			}
 		}
 	}
@@ -932,6 +994,37 @@ final class PromiseQTests: XCTestCase {
 			}
 			.catch { error in
 				XCTFail()
+			}
+		}
+	}
+	
+	func testPromise_AnyCancel() {
+		wait(count: 2) { expectations in
+			expectations[0].isInverted = true
+			
+			let promise = Promise.any(
+				Promise { resolve, reject in
+					asyncAfter {
+						resolve("Hello")
+					}
+				},
+				Promise { resolve, reject in
+					asyncAfter {
+						resolve("World")
+					}
+				}
+			)
+			.then { results in
+				expectations[0].fulfill()
+			}
+			.catch { error in
+				if case PromiseError.cancelled = error {
+					expectations[1].fulfill()
+				}
+			}
+			
+			asyncAfter(0.1) {
+				promise.cancel()
 			}
 		}
 	}
@@ -1314,6 +1407,33 @@ final class PromiseQTests: XCTestCase {
 			.catch { error in
 				XCTAssert(error.localizedDescription == "Error")
 				expectations[1].fulfill()
+			}
+		}
+	}
+	
+	func testPromise_AsyncAwaitCancel() {
+		wait(count: 2) { expectations in
+			expectations[0].isInverted = true
+			
+			async {
+				let promise = Promise { resolve, reject in
+					asyncAfter {
+						resolve(200)
+					}
+				}
+				
+				asyncAfter(0.1) {
+					promise.cancel()
+				}
+				
+				_ = try promise.await()
+				
+				expectations[0].fulfill() // Must be skipped
+			}
+			.catch { error in
+				if case PromiseError.cancelled = error {
+					expectations[1].fulfill()
+				}
 			}
 		}
 	}
