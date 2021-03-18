@@ -7,12 +7,6 @@ import PromiseQ
 	typealias UIImage = NSImage
 #endif
 
-
-///// String errors
-//extension String : LocalizedError {
-//	public var errorDescription: String? { return self }
-//}
-
 extension DispatchQueue {
 	
 	static var queues: [String : DispatchQueue] = {
@@ -56,13 +50,11 @@ class TimeOutTask : Asyncable {
 	}
 	
 	func resume() {
-		dlog("Task: resume")
 		work = DispatchWorkItem(block: self.fire)
 		DispatchQueue.global().asyncAfter(deadline: .now() + timeOut, execute: work!)
 	}
 	
 	func cancel() {
-		dlog("Task: cancel")
 		work?.cancel()
 		work = nil
 	}
@@ -550,7 +542,6 @@ final class PromiseQTests: XCTestCase {
 			.catch { error in
 				if case PromiseError.timedOut = error {
 					expectations[0].fulfill()
-					dlog(error: error)
 				}
 			}
 			.then(timeout: 0.1) {
@@ -562,7 +553,6 @@ final class PromiseQTests: XCTestCase {
 			.catch { error in
 				if case PromiseError.timedOut = error {
 					expectations[1].fulfill()
-					dlog(error: error)
 				}
 			}
 			.then(timeout: 0.1) { _, resolve, reject in
@@ -576,7 +566,6 @@ final class PromiseQTests: XCTestCase {
 			.catch(timeout: 0.1) { error in
 				if case PromiseError.timedOut = error {
 					expectations[2].fulfill()
-					dlog(error: error)
 				}
 				Thread.sleep(forTimeInterval: 0.3)
 			}
@@ -586,7 +575,6 @@ final class PromiseQTests: XCTestCase {
 			.catch { error in
 				if case PromiseError.timedOut = error {
 					expectations[3].fulfill()
-					dlog(error: error)
 				}
 			}
 		}
@@ -605,7 +593,6 @@ final class PromiseQTests: XCTestCase {
 			.catch { error in
 				if case PromiseError.timedOut = error {
 					expectations[0].fulfill()
-					dlog(error: error)
 				}
 			}
 			.then(timeout: 0.1) { _, resolve, reject in
@@ -619,7 +606,6 @@ final class PromiseQTests: XCTestCase {
 			.catch { error in
 				if case PromiseError.timedOut = error {
 					expectations[1].fulfill()
-					dlog(error: error)
 				}
 			}
 		}
@@ -1370,7 +1356,6 @@ final class PromiseQTests: XCTestCase {
 				expectation.fulfill()
 			}
 			catch {
-				dlog(error: error)
 			}
 		}
 	}
@@ -1386,9 +1371,6 @@ final class PromiseQTests: XCTestCase {
 				
 				XCTAssert(text == "Hello")
 				expectation.fulfill()
-			}
-			.catch {
-				dlog(error: $0)
 			}
 		}
 	}

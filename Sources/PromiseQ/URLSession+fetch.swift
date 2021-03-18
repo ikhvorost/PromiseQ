@@ -78,7 +78,6 @@ fileprivate extension URL {
 			return (self as NSURL).deletingLastPathComponent!.appendingPathComponent(name)
 		}
 		catch {
-			print(error)
 		}
 		return self
 	}
