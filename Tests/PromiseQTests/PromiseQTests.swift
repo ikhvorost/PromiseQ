@@ -1777,6 +1777,48 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
+	// MARK: - Leaks
+	
+	func testPromise_Leak() {
+		wait(timeout: 1) { expectation in
+			var promise = Promise { return 200 }
+			.then { _ in }
+			.then { (_, resolve: @escaping (Int) -> Void, reject) in
+				asyncAfter {
+					resolve(300)
+				}
+			}
+			.then { _ in throw "error" }
+			.catch { _ in }
+			
+			promise.onDeinit = {
+				expectation.fulfill()
+			}
+		}
+	}
+	
+	func testPromise_LeakAll() {
+		wait(count: 3) { expectations in
+			
+			var promise1 = Promise { return 200 }
+			promise1.onDeinit = {
+				expectations[0].fulfill()
+			}
+			
+			var promise2 = Promise { return 300 }
+			promise2.onDeinit = {
+				expectations[1].fulfill()
+			}
+			
+			var promiseAll = Promise.all (promise1, promise2)
+				.then { _ in
+				}
+			promiseAll.onDeinit = {
+				expectations[2].fulfill()
+			}
+		}
+	}
+	
 	// MARK: - Samples
 	
 	/// Load avatars of first 30 GitHub users

@@ -73,6 +73,11 @@ class Monitor : Asyncable {
 	@Atomic private var semaphore: DispatchSemaphore?
 	@Atomic var task: Asyncable?
 	
+	var onDeinit: (() -> Void)?
+	deinit {
+		onDeinit?()
+	}
+	
 	func cancel() {
 		cancelled = true
 		reject?()
