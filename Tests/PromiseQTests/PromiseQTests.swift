@@ -773,8 +773,8 @@ final class PromiseQTests: XCTestCase {
 	
 	func testPromise_AllAny() {
 		wait { expectation in
-			Promise.all(
-				Promise<Any> { resolve, reject in
+			Promise<Any>.all(
+				Promise { resolve, reject in
 					asyncAfter {
 						resolve("Hello")
 					}
@@ -812,8 +812,8 @@ final class PromiseQTests: XCTestCase {
 	
 	func testPromise_AllSettled() {
 		wait { expectation in
-			Promise.all(settled: true,
-				Promise<Any> { resolve, reject in
+			Promise<Any>.all(settled: true,
+				Promise { resolve, reject in
 					asyncAfter {
 						reject("Error")
 					}
@@ -838,17 +838,41 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
+	func testPromise_AllSuppendResume() {
+		wait { expectation in
+			let promise = Promise.all(
+				Promise { resolve, reject in
+					asyncAfter { resolve(200) }
+				},
+				Promise.resolve(300)
+			)
+			.then { results in
+				XCTAssert(results.count == 2)
+				XCTAssert(results[0] == 200)
+				XCTAssert(results[1] == 300)
+				expectation.fulfill()
+			}
+			.catch { error in
+				XCTFail()
+			}
+			
+			asyncAfter(0.1) { promise.suspend() }
+			asyncAfter(0.5) { promise.resume() }
+		}
+	}
+	
 	func testPromise_RaceEmpty() {
 		wait { expectation in
 			let promises = [Promise<Any>]()
 			
 			Promise.race(promises)
 			.then { result in
-				XCTAssert(result is Void)
-				expectation.fulfill()
+				XCTFail()
 			}
 			.catch { error in
-				XCTFail()
+				if case PromiseError.empty = error {
+					expectation.fulfill()
+				}
 			}
 		}
 	}
@@ -886,7 +910,7 @@ final class PromiseQTests: XCTestCase {
 	
 	func testPromise_RaceThen() {
 		wait { expectation in
-			Promise.race(
+			Promise<Any>.race(
 				Promise { resolve, reject in
 					asyncAfter {
 						resolve(200)
@@ -943,19 +967,19 @@ final class PromiseQTests: XCTestCase {
 			
 			Promise.any(promises)
 			.then { result in
-				XCTAssert(result is [Any])
-				XCTAssert((result as! [Any]).count == 0)
-				expectation.fulfill()
+				XCTFail()
 			}
 			.catch { error in
-				XCTFail()
+				if case PromiseError.empty = error {
+					expectation.fulfill()
+				}
 			}
 		}
 	}
 	
 	func testPromise_Any() {
 		wait { expectation in
-			Promise.any(
+			Promise<Any>.any(
 				Promise {
 					throw "Fatal"
 				},
@@ -988,7 +1012,7 @@ final class PromiseQTests: XCTestCase {
 		wait(count: 2) { expectations in
 			expectations[0].isInverted = true
 			
-			let promise = Promise.any(
+			let promise = Promise<Any>.any(
 				Promise { resolve, reject in
 					asyncAfter {
 						resolve("Hello")
@@ -996,7 +1020,7 @@ final class PromiseQTests: XCTestCase {
 				},
 				Promise { resolve, reject in
 					asyncAfter {
-						resolve("World")
+						resolve(200)
 					}
 				}
 			)
@@ -1017,27 +1041,30 @@ final class PromiseQTests: XCTestCase {
 	
 	func testPromise_AnyReject() {
 		wait { expectation in
+			let promise = Promise<Any> { resolve, reject in
+				asyncAfter { resolve(200) }
+			}
+			
 			Promise.any(
-				Promise { resolve, reject in
-					asyncAfter {
-						reject("Fatal")
-					}
+				Promise(timeout: 0.1) { resolve, reject in
 				},
-				Promise { resolve, reject in
-					reject("Fail")
-				}
+				promise
 			)
 			.then { result in
 				XCTFail()
 			}
 			.catch { error in
+				XCTAssert(error.localizedDescription == PromiseError.aggregate([Error]()).localizedDescription)
+				
 				if case let PromiseError.aggregate(errors) = error {
 					XCTAssert(errors.count == 2)
-					XCTAssert(errors[0] as? String == "Fatal")
-					XCTAssert(errors[1] as? String == "Fail")
+					XCTAssert(errors[0].localizedDescription == PromiseError.timedOut.localizedDescription)
+					XCTAssert(errors[1].localizedDescription == PromiseError.cancelled.localizedDescription)
 					expectation.fulfill()
 				}
 			}
+			
+			promise.cancel()
 		}
 	}
 	
@@ -1048,6 +1075,9 @@ final class PromiseQTests: XCTestCase {
 			}
 			.then {
 				XCTFail()
+			}
+			.then {
+				Promise { XCTFail() }
 			}
 			.finally {
 				expectations[0].fulfill()
@@ -1427,14 +1457,38 @@ final class PromiseQTests: XCTestCase {
 		let url: String
 	}
 	
-	func testPromise_get_badURL() {
+	func testPromise_badURL() {
 		wait { expectation in
-			fetch("")
-			.then { _ in
-				XCTAssert(false)
+			Promise.any(
+				fetch(""),
+				upload("", data: Data()),
+				download("")
+			)
+			.then { result in
+				XCTFail()
 			}
 			.catch { error in
-				XCTAssert(error.localizedDescription == "Bad path")
+				if case let PromiseError.aggregate(errors) = error {
+					XCTAssert(errors.count == 3)
+					XCTAssert(errors[0].localizedDescription == "Bad path")
+					expectation.fulfill()
+				}
+			}
+		}
+	}
+	
+	func testPromise_get_404() {
+		wait { expectation in
+			let path = "https://postman-echo.com/notfound"
+			fetch(path)
+			.then { response in
+				guard response.ok else {
+					throw response.statusCodeDescription
+				}
+				XCTFail()
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "HTTP 404 - not found")
 				expectation.fulfill()
 			}
 		}
@@ -1442,20 +1496,30 @@ final class PromiseQTests: XCTestCase {
 	
 	func testPromise_get() {
 		wait { expectation in
-			let path = "https://httpbin.org/get"
+			let path = "https://postman-echo.com/get"
 			fetch(path)
 			.then { response in
 				guard response.ok else {
 					throw response.statusCodeDescription
 				}
 				
-				guard let data = response.data else {
+				guard case let .data(data) = response.result else {
 					throw "No data"
 				}
 				
 				let json = try JSONDecoder().decode(JSONResponse.self, from: data)
 				XCTAssert(json.url == path)
 				
+				guard let text = response.text else {
+					throw "No text"
+				}
+				XCTAssert(!text.isEmpty)
+				
+				guard let dict = response.json as? [String : Any] else {
+					throw "No json dict"
+				}
+				XCTAssert(dict.count > 0)
+
 				expectation.fulfill()
 			}
 			.catch { error in
@@ -1473,7 +1537,7 @@ final class PromiseQTests: XCTestCase {
 					throw response.statusCodeDescription
 				}
 				
-				guard let data = response.data else {
+				guard case let .data(data) = response.result else {
 					throw "No data"
 				}
 				
@@ -1489,7 +1553,7 @@ final class PromiseQTests: XCTestCase {
 	
 	func testPromise_post() {
 		wait { expectation in
-			let path = "https://httpbin.org/post"
+			let path = "https://postman-echo.com/post"
 			let text = "hello"
 			fetch(path, method: .POST, headers: ["Content-Type": "text/plain"], body: text.data(using: .utf8))
 			.then { response in
@@ -1497,7 +1561,7 @@ final class PromiseQTests: XCTestCase {
 					throw response.statusCodeDescription
 				}
 				
-				guard let data = response.data else {
+				guard case let .data(data) = response.result else {
 					throw "No data"
 				}
 				
@@ -1523,7 +1587,7 @@ final class PromiseQTests: XCTestCase {
 					throw response.statusCodeDescription
 				}
 				
-				guard let data = response.data else {
+				guard case let .data(data) = response.result else {
 					throw "No data"
 				}
 				
@@ -1549,7 +1613,7 @@ final class PromiseQTests: XCTestCase {
 					throw response.statusCodeDescription
 				}
 				
-				guard let data = response.data else {
+				guard case let .data(data) = response.result else {
 					throw "No data"
 				}
 				
@@ -1575,7 +1639,7 @@ final class PromiseQTests: XCTestCase {
 					throw response.statusCodeDescription
 				}
 				
-				guard let data = response.data else {
+				guard case let .data(data) = response.result else {
 					throw "No data"
 				}
 				
@@ -1678,7 +1742,9 @@ final class PromiseQTests: XCTestCase {
 	}
 	
 	func testPromise_download() {
-		wait(count:2, timeout: 3) { expectations in
+		wait(count:3, timeout: 3) { expectations in
+			expectations[2].isInverted = true
+			
 			download("http://speedtest.tele2.net/1MB.zip") { task, written, total in
 				let percent = Double(written) / Double(total)
 				if percent == 1.0 {
@@ -1690,16 +1756,24 @@ final class PromiseQTests: XCTestCase {
 					throw response.statusCodeDescription
 				}
 				
-				guard let location = response.location else {
+				guard case let .location(url) = response.result else {
 					throw "No location"
 				}
 				
-				XCTAssert(FileManager.default.fileExists(atPath: location.path))
+				XCTAssert(FileManager.default.fileExists(atPath: url.path))
+				
+				guard let data = response.data else {
+					throw "No data"
+				}
+				
+				XCTAssert(data.count > 0)
+				
 				expectations[1].fulfill()
 			}
 			.catch { error in
 				XCTFail()
 				dlog(error: error)
+				expectations[2].fulfill()
 			}
 		}
 	}
@@ -1728,10 +1802,13 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
+	// https://c.speedtest.net/speedtest-servers-static.php
+	let uploadURL = "http://speedtest.lantrace.net:8080/speedtest/upload.php"
+	
 	func testPromise_uploadData() {
-		wait(count:2, timeout: 3) { expectations in
+		wait(count:2, timeout: 4) { expectations in
 			let data = Data(Array(repeating: UInt8(0), count: 1024 * 1024)) // 1MB
-			upload("http://speedtest.tele2.net/upload.php", data: data) { task, sent, total in
+			upload(uploadURL, data: data) { task, sent, total in
 				let percent = Double(sent) / Double(total)
 				if percent == 1.0 {
 					expectations[0].fulfill()
@@ -1757,7 +1834,7 @@ final class PromiseQTests: XCTestCase {
 			let data = Data(Array(repeating: UInt8(0), count: 1024 * 1024)) // 1MB
 			try? data.write(to: url)
 			
-			upload("http://speedtest.tele2.net/upload.php", file: url) { task, sent, total in
+			upload(uploadURL, file: url) { task, sent, total in
 				let percent = Double(sent) / Double(total)
 				if percent == 1.0 {
 					expectations[0].fulfill()
@@ -1870,7 +1947,7 @@ final class PromiseQTests: XCTestCase {
 					throw response.statusCodeDescription
 				}
 				
-				guard let data = response.data else {
+				guard case let .data(data) = response.result else {
 					throw "No data"
 				}
 				

@@ -1,5 +1,5 @@
 //
-//  URLSession+fetch.swift
+//  Fetch.swift
 //  
 //  Created by Iurii Khvorost <iurii.khvorost@gmail.com> on 2021/03/02.
 //  Copyright © 2021 Iurii Khvorost. All rights reserved.
@@ -67,57 +67,55 @@ extension URLSessionDataTask: Asyncable {
 extension URLSessionDownloadTask: Asyncable {
 }
 
-fileprivate extension URL {
-	/// Renaming to prevent deleting by the system
-	mutating func rename() -> URL {
-		let name = "pq_" + lastPathComponent
-		var values = URLResourceValues()
-		values.name = name
-		do {
-			try setResourceValues(values)
-			return (self as NSURL).deletingLastPathComponent!.appendingPathComponent(name)
-		}
-		catch {
-		}
-		return self
-	}
+fileprivate let ErrorBadURL: Error = "Bad path"
+
+public enum ResponseResult {
+	case data(Data)
+	case location(URL)
 }
 
 public class Response {
 	public let response: HTTPURLResponse
-	public let data: Data?
-	public let location: URL?
+	public let result: ResponseResult
 	
 	public var ok: Bool {
 		(200...299).contains(response.statusCode)
 	}
 	
 	public var statusCodeDescription: String {
-		"HTTP \(response.statusCode): " + HTTPURLResponse.localizedString(forStatusCode: response.statusCode)
+		"HTTP \(response.statusCode) - " + HTTPURLResponse.localizedString(forStatusCode: response.statusCode)
 	}
 	
-	public var dataText: String? {
-		guard let data = data, data.count > 0 else {
-			return nil
+	public var data: Data? {
+		switch result {
+			case let .data(data):
+				return data
+			case let .location(url):
+				return try? Data(contentsOf: url)
 		}
-		return String(data: data, encoding: .utf8)
 	}
 	
-	public var locationData: Data? {
-		if let url = location {
-			return try? Data(contentsOf: url)
+	public var text: String? {
+		if let data = data {
+			return String(data: data, encoding: .utf8)
 		}
 		return nil
 	}
 	
-	fileprivate init(response: HTTPURLResponse, data: Data? = nil, location: URL? = nil) {
+	public var json: Any? {
+		if let data = data {
+			return try? JSONSerialization.jsonObject(with: data)
+		}
+		return nil
+	}
+	
+	fileprivate init(response: HTTPURLResponse, result: ResponseResult) {
 		self.response = response
-		self.data = data
-		self.location = location
+		self.result = result
 	}
 	
 	deinit {
-		if let url = location {
+		if case let .location(url) = result {
 			DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {
 				try? FileManager.default.removeItem(at: url)
 			}
@@ -135,12 +133,9 @@ public extension URLSession  {
 					return
 				}
 				
-				guard let response = response as? HTTPURLResponse else {
-					reject("No response")
-					return
-				}
-				
-				resolve(Response(response: response, data: data))
+				assert(response is HTTPURLResponse)
+				assert(data != nil)
+				resolve(Response(response: response as! HTTPURLResponse, result: .data(data!)))
 			}
 			task?.resume()
 		}
@@ -158,7 +153,7 @@ public extension URLSession  {
 	
 	func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<Response> {
 		guard let url = URL(string: path) else {
-			return Promise<Response>.reject("Bad path")
+			return Promise<Response>.reject(ErrorBadURL)
 		}
 		return fetch(url, method: method, headers: headers, body: body, retry: retry)
 	}
@@ -190,6 +185,8 @@ private class SessionDownloadDelegate: NSObject, URLSessionDownloadDelegate {
 	}
 	
 	func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+		session.invalidateAndCancel()
+		
 		if error != nil {
 			reject(error!)
 		}
@@ -198,19 +195,22 @@ private class SessionDownloadDelegate: NSObject, URLSessionDownloadDelegate {
 	func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
 		session.invalidateAndCancel()
 		
-		guard let response = downloadTask.response as? HTTPURLResponse else {
-			reject("No response")
-			return
-		}
-
+		// Rename
 		var url = location
-		resolve(Response(response: response, location: url.rename()))
+		let name = "pq_" + location.lastPathComponent
+		var values = URLResourceValues()
+		values.name = name
+		try? url.setResourceValues(values)
+		url = (url as NSURL).deletingLastPathComponent!.appendingPathComponent(name)
+
+		let response = Response(response: downloadTask.response as! HTTPURLResponse, result: .location(url))
+		resolve(response)
 	}
 }
 
-public func download(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0, progress: Progress?) -> Promise<Response> {
+public func download(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0, progress: Progress? = nil) -> Promise<Response> {
 	guard let url = URL(string: path) else {
-		return Promise<Response>.reject("Bad url path")
+		return Promise<Response>.reject(ErrorBadURL)
 	}
 	
 	var request = URLRequest(url: url)
@@ -246,7 +246,7 @@ private class SessionTaskDelegate: NSObject, URLSessionTaskDelegate {
 private func upload(_ path: String, data: Data?, file: URL?, method: HTTPMethod = .POST, headers: [String : String]? = nil,
 					retry: Int = 0, progress: Progress?) -> Promise<Response> {
 	guard let url = URL(string: path) else {
-		return Promise<Response>.reject("Bad url path")
+		return Promise<Response>.reject(ErrorBadURL)
 	}
 	
 	var request = URLRequest(url: url)
@@ -265,12 +265,9 @@ private func upload(_ path: String, data: Data?, file: URL?, method: HTTPMethod 
 				return
 			}
 			
-			guard let response = response as? HTTPURLResponse else {
-				reject("No response")
-				return
-			}
-			
-			resolve(Response(response: response, data: data))
+			assert(response is HTTPURLResponse)
+			assert(data != nil)
+			resolve(Response(response: response as! HTTPURLResponse, result: .data(data!)))
 		}
 		
 		task = file != nil
@@ -280,11 +277,11 @@ private func upload(_ path: String, data: Data?, file: URL?, method: HTTPMethod 
 	}
 }
 
-public func upload(_ path: String, data: Data, method: HTTPMethod = .POST, headers: [String : String]? = nil, retry: Int = 0, progress: Progress?) -> Promise<Response> {
+public func upload(_ path: String, data: Data, method: HTTPMethod = .POST, headers: [String : String]? = nil, retry: Int = 0, progress: Progress? = nil) -> Promise<Response> {
 	return upload(path, data: data, file: nil, method: method, headers: headers, retry: retry, progress: progress)
 }
 
-public func upload(_ path: String, file: URL, method: HTTPMethod = .POST, headers: [String : String]? = nil, retry: Int = 0, progress: Progress?) -> Promise<Response> {
+public func upload(_ path: String, file: URL, method: HTTPMethod = .POST, headers: [String : String]? = nil, retry: Int = 0, progress: Progress? = nil) -> Promise<Response> {
 	guard FileManager.default.fileExists(atPath: file.path) else {
 		return Promise<Response>.reject("File not found")
 	}

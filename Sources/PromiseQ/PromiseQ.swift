@@ -36,11 +36,12 @@ private func setTimeout<T>(timeout: TimeInterval, pending: @escaping (Result<T, 
 private func pending<T>(monitor: Monitor, callback: @escaping (Result<T, Error>) -> Void) -> (Result<T, Error>) -> Void {
 	var p = true
 	return { [weak monitor] (result: Result<T, Error>) -> Void in
-		guard let m = monitor else { return }
-		synchronized(m) {
-			guard p else { return }
-			p.toggle()
-			callback(result)
+		if monitor != nil {
+			synchronized(monitor!) {
+				guard p else { return }
+				p.toggle()
+				callback(result)
+			}
 		}
 	}
 }
@@ -140,6 +141,9 @@ public enum PromiseError: Error, LocalizedError {
 	/// The Promise cancelled.
 	case cancelled
 	
+	/// No Promises.
+	case empty
+	
 	/// A localized message describing what error occurred.
 	public var errorDescription: String? {
 		switch self {
@@ -148,7 +152,9 @@ public enum PromiseError: Error, LocalizedError {
 			case .aggregate:
 				return "All Promises rejected."
 			case .cancelled:
-				return "All Promises cancelled."
+				return "The Promise cancelled."
+			case .empty:
+				return "The Promises empty."
 		}
 	}
 }
@@ -182,11 +188,8 @@ public struct Promise<T> {
 	private let monitor: Monitor
 	
 	public var onDeinit: (() -> Void)? {
-		set {
-			monitor.onDeinit = newValue
-		}
-		get {
-			monitor.onDeinit
+		didSet {
+			monitor.onDeinit = onDeinit
 		}
 	}
 	
@@ -797,74 +800,6 @@ public struct Promise<T> {
 		return all(settled: settled, promises)
 	}
 	
-}
-
-extension Promise : Asyncable {
-	/// Suspends the promise or the promise chain.
-	///
-	/// Suspension does not affect the execution of the promise that has already begun it stops execution of next
-	/// promises in a chain. Call `resume()` to continue executing the promise or the promise chain.
-	///
-	///		// Suspended promise
-	///		Promise {
-	///			// Runs after `resume()` only
-	///     	return 200
-	///     }
-	///     .suspend()
-	///
-	///		// Suspend next promise in a promise chain
-	///		let p = Promise {
-	///     	return 200
-	///     }
-	///     p.then {
-	///			p.suspend()
-	///		}
-	///		.then {
-	///			// Runs after `resume()` only
-	///		}
-	///
-	/// - SeeAlso: `resume()`
-	public func suspend() {
-		monitor.suspend()
-	}
-	
-	/// Resumes the promise or the promise chain.
-	///
-	/// Resume continues executing the promise or the promise chain.
-	///
-	///		// Suspended promise
-	///		let p = Promise {
-	///			// Runs after `resume()` only
-	///     	return 200
-	///     }
-	///     p.suspend()
-	///
-	///		// Resume the promise after 1 sec
-	///		DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-	///			p.resume()
-	///		}
-	///
-	/// - SeeAlso: `suspend()`
-	public func resume() {
-		monitor.resume()
-	}
-	
-	/// Cancels execution of the promise or the promise chain.
-	///
-	///		let p = Promise {
-	///     	return 200 // Doesn't execute
-	///     }
-	///     p.cancel()
-	///
-	/// Cancelation does not affect the execution of the promise that has already begun it cancels execution of next
-	/// promises in the chain.
-	public func cancel() {
-		monitor.cancel()
-	}
-}
-
-extension Promise where T == Any {
-	
 	/// Waits only for the first settled promise and gets its result (or error).
 	///
 	/// 	Promise.race([
@@ -893,7 +828,7 @@ extension Promise where T == Any {
 		return Promise { resolve, reject, task in
 			
 			guard promises.count > 0 else {
-				resolve(Void())
+				reject(PromiseError.empty)
 				return
 			}
 			
@@ -966,7 +901,7 @@ extension Promise where T == Any {
 		return Promise<T> { resolve, reject, task in
 			
 			guard promises.count > 0 else {
-				resolve([Any]())
+				reject(PromiseError.empty)
 				return
 			}
 			
@@ -1004,6 +939,71 @@ extension Promise where T == Any {
 	/// - SeeAlso: Promise.any([Promise<T>]) -> Promise<T>
 	public static func any(_ promises: Promise<T>...) -> Promise<T> {
 		return any(promises)
+	}
+	
+}
+
+extension Promise : Asyncable {
+	/// Suspends the promise or the promise chain.
+	///
+	/// Suspension does not affect the execution of the promise that has already begun it stops execution of next
+	/// promises in a chain. Call `resume()` to continue executing the promise or the promise chain.
+	///
+	///		// Suspended promise
+	///		Promise {
+	///			// Runs after `resume()` only
+	///     	return 200
+	///     }
+	///     .suspend()
+	///
+	///		// Suspend next promise in a promise chain
+	///		let p = Promise {
+	///     	return 200
+	///     }
+	///     p.then {
+	///			p.suspend()
+	///		}
+	///		.then {
+	///			// Runs after `resume()` only
+	///		}
+	///
+	/// - SeeAlso: `resume()`
+	public func suspend() {
+		monitor.suspend()
+	}
+	
+	/// Resumes the promise or the promise chain.
+	///
+	/// Resume continues executing the promise or the promise chain.
+	///
+	///		// Suspended promise
+	///		let p = Promise {
+	///			// Runs after `resume()` only
+	///     	return 200
+	///     }
+	///     p.suspend()
+	///
+	///		// Resume the promise after 1 sec
+	///		DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+	///			p.resume()
+	///		}
+	///
+	/// - SeeAlso: `suspend()`
+	public func resume() {
+		monitor.resume()
+	}
+	
+	/// Cancels execution of the promise or the promise chain.
+	///
+	///		let p = Promise {
+	///     	return 200 // Doesn't execute
+	///     }
+	///     p.cancel()
+	///
+	/// Cancelation does not affect the execution of the promise that has already begun it cancels execution of next
+	/// promises in the chain.
+	public func cancel() {
+		monitor.cancel()
 	}
 }
 
