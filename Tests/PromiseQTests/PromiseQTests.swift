@@ -1461,8 +1461,8 @@ final class PromiseQTests: XCTestCase {
 		wait { expectation in
 			Promise.any(
 				fetch(""),
-				upload("", data: Data()),
-				download("")
+				upload("ftp://some.com", data: Data()),
+				download("123")
 			)
 			.then { result in
 				XCTFail()
@@ -1470,9 +1470,27 @@ final class PromiseQTests: XCTestCase {
 			.catch { error in
 				if case let PromiseError.aggregate(errors) = error {
 					XCTAssert(errors.count == 3)
-					XCTAssert(errors[0].localizedDescription == "Bad path")
+					errors.forEach {
+						XCTAssert($0.localizedDescription == "Bad URL")
+					}
 					expectation.fulfill()
 				}
+			}
+		}
+	}
+	
+	// http://speedtest.tele2.net/
+	func testPromise_notHTTP() {
+		wait(timeout:3) { expectation in
+			// Download
+			let url = URL(string: "ftp://speedtest:speedtest@ftp.otenet.gr/test1Mb.db")!
+			URLSession.shared.fetch(url)
+			.then { result in
+				XCTFail()
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Not HTTP")
+				expectation.fulfill()
 			}
 		}
 	}
@@ -1485,6 +1503,7 @@ final class PromiseQTests: XCTestCase {
 				guard response.ok else {
 					throw response.statusCodeDescription
 				}
+				
 				XCTFail()
 			}
 			.catch { error in
@@ -1804,6 +1823,7 @@ final class PromiseQTests: XCTestCase {
 	
 	// https://c.speedtest.net/speedtest-servers-static.php
 	let uploadURL = "http://speedtest.lantrace.net:8080/speedtest/upload.php"
+	//let uploadURL = "http://speedtest.tele2.net/upload.php"
 	
 	func testPromise_uploadData() {
 		wait(count:2, timeout: 4) { expectations in
@@ -1913,7 +1933,7 @@ final class PromiseQTests: XCTestCase {
 				
 				return try JSONDecoder().decode([User].self, from: data)
 			}
-			.then { users -> Promise<Array<Response>> in
+			.then { users -> Promise<Array<HTTPResponse>> in
 				guard users.count > 0 else {
 					throw "Users list is empty"
 				}

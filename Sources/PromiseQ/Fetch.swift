@@ -67,14 +67,26 @@ extension URLSessionDataTask: Asyncable {
 extension URLSessionDownloadTask: Asyncable {
 }
 
-fileprivate let ErrorBadURL: Error = "Bad path"
+extension URL {
+	
+	init?(httpURL url: String) {
+		guard url.lowercased().hasPrefix("http://") || url.lowercased().hasPrefix("https://") else {
+			return nil
+		}
+		
+		self.init(string: url)
+	}
+}
+
+fileprivate let ErrorBadURL: Error = "Bad URL"
+fileprivate let ErrorNotHTTP: Error = "Not HTTP"
 
 public enum ResponseResult {
 	case data(Data)
 	case location(URL)
 }
 
-public class Response {
+public class HTTPResponse {
 	public let response: HTTPURLResponse
 	public let result: ResponseResult
 	
@@ -125,23 +137,27 @@ public class Response {
 
 public extension URLSession  {
 	
-	func fetch(_ request: URLRequest, retry: Int = 0) -> Promise<Response> {
-		Promise<Response>(retry: retry) { resolve, reject, task in
+	func fetch(_ request: URLRequest, retry: Int = 0) -> Promise<HTTPResponse> {
+		Promise<HTTPResponse>(retry: retry) { resolve, reject, task in
 			task = self.dataTask(with: request) { data, response, error in
 				guard error == nil else {
 					reject(error!)
 					return
 				}
 				
-				assert(response is HTTPURLResponse)
+				guard let response = response as? HTTPURLResponse else {
+					reject(ErrorNotHTTP)
+					return
+				}
+				
 				assert(data != nil)
-				resolve(Response(response: response as! HTTPURLResponse, result: .data(data!)))
+				resolve(HTTPResponse(response: response, result: .data(data!)))
 			}
 			task?.resume()
 		}
 	}
 	
-	func fetch(_ url: URL, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<Response> {
+	func fetch(_ url: URL, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
 		var request = URLRequest(url: url)
 		request.httpMethod = method.rawValue
 		request.allHTTPHeaderFields = headers
@@ -151,16 +167,16 @@ public extension URLSession  {
 		return fetch(request, retry: retry)
 	}
 	
-	func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<Response> {
-		guard let url = URL(string: path) else {
-			return Promise<Response>.reject(ErrorBadURL)
+	func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
+		guard let url = URL(httpURL: path) else {
+			return Promise<HTTPResponse>.reject(ErrorBadURL)
 		}
 		return fetch(url, method: method, headers: headers, body: body, retry: retry)
 	}
 
 }
 
-public func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<Response> {
+public func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
 	URLSession.shared.fetch(path, method: method, headers: headers, body: body, retry: retry)
 }
 
@@ -169,11 +185,11 @@ public func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : 
 public typealias Progress = (URLSessionTask, Int64, Int64) -> Void
 
 private class SessionDownloadDelegate: NSObject, URLSessionDownloadDelegate {
-	let resolve: (Response) -> Void
+	let resolve: (HTTPResponse) -> Void
 	let reject: (Error) -> Void
 	let progress: Progress?
 	
-	init(resolve: @escaping (Response) -> Void, reject: @escaping (Error) -> Void, progress: Progress?) {
+	init(resolve: @escaping (HTTPResponse) -> Void, reject: @escaping (Error) -> Void, progress: Progress?) {
 		self.resolve = resolve
 		self.reject = reject
 		self.progress = progress
@@ -203,14 +219,19 @@ private class SessionDownloadDelegate: NSObject, URLSessionDownloadDelegate {
 		try? url.setResourceValues(values)
 		url = (url as NSURL).deletingLastPathComponent!.appendingPathComponent(name)
 
-		let response = Response(response: downloadTask.response as! HTTPURLResponse, result: .location(url))
+		guard let httpResponse = downloadTask.response as? HTTPURLResponse else {
+			reject(ErrorNotHTTP)
+			return
+		}
+		
+		let response = HTTPResponse(response: httpResponse, result: .location(url))
 		resolve(response)
 	}
 }
 
-public func download(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0, progress: Progress? = nil) -> Promise<Response> {
-	guard let url = URL(string: path) else {
-		return Promise<Response>.reject(ErrorBadURL)
+public func download(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0, progress: Progress? = nil) -> Promise<HTTPResponse> {
+	guard let url = URL(httpURL: path) else {
+		return Promise<HTTPResponse>.reject(ErrorBadURL)
 	}
 	
 	var request = URLRequest(url: url)
@@ -218,7 +239,7 @@ public func download(_ path: String, method: HTTPMethod = .GET, headers: [String
 	request.allHTTPHeaderFields = headers
 	request.httpBody = body
 	
-	return Promise<Response>(retry: retry) { resolve, reject, task in
+	return Promise<HTTPResponse>(retry: retry) { resolve, reject, task in
 		let delegate = SessionDownloadDelegate(resolve: resolve, reject: reject, progress: progress)
 		let session = URLSession.init(configuration: .default, delegate: delegate, delegateQueue: nil)
 
@@ -244,16 +265,16 @@ private class SessionTaskDelegate: NSObject, URLSessionTaskDelegate {
 }
 
 private func upload(_ path: String, data: Data?, file: URL?, method: HTTPMethod = .POST, headers: [String : String]? = nil,
-					retry: Int = 0, progress: Progress?) -> Promise<Response> {
-	guard let url = URL(string: path) else {
-		return Promise<Response>.reject(ErrorBadURL)
+					retry: Int = 0, progress: Progress?) -> Promise<HTTPResponse> {
+	guard let url = URL(httpURL: path) else {
+		return Promise<HTTPResponse>.reject(ErrorBadURL)
 	}
 	
 	var request = URLRequest(url: url)
 	request.httpMethod = method.rawValue
 	request.allHTTPHeaderFields = headers
 	
-	return Promise<Response>(retry: retry) { resolve, reject, task in
+	return Promise<HTTPResponse>(retry: retry) { resolve, reject, task in
 		let delegate = SessionTaskDelegate(progress: progress)
 		let session = URLSession.init(configuration: .default, delegate: delegate, delegateQueue: nil)
 		
@@ -265,9 +286,13 @@ private func upload(_ path: String, data: Data?, file: URL?, method: HTTPMethod 
 				return
 			}
 			
-			assert(response is HTTPURLResponse)
+			guard let response = response as? HTTPURLResponse else {
+				reject(ErrorNotHTTP)
+				return
+			}
+			
 			assert(data != nil)
-			resolve(Response(response: response as! HTTPURLResponse, result: .data(data!)))
+			resolve(HTTPResponse(response: response, result: .data(data!)))
 		}
 		
 		task = file != nil
@@ -277,13 +302,13 @@ private func upload(_ path: String, data: Data?, file: URL?, method: HTTPMethod 
 	}
 }
 
-public func upload(_ path: String, data: Data, method: HTTPMethod = .POST, headers: [String : String]? = nil, retry: Int = 0, progress: Progress? = nil) -> Promise<Response> {
+public func upload(_ path: String, data: Data, method: HTTPMethod = .POST, headers: [String : String]? = nil, retry: Int = 0, progress: Progress? = nil) -> Promise<HTTPResponse> {
 	return upload(path, data: data, file: nil, method: method, headers: headers, retry: retry, progress: progress)
 }
 
-public func upload(_ path: String, file: URL, method: HTTPMethod = .POST, headers: [String : String]? = nil, retry: Int = 0, progress: Progress? = nil) -> Promise<Response> {
+public func upload(_ path: String, file: URL, method: HTTPMethod = .POST, headers: [String : String]? = nil, retry: Int = 0, progress: Progress? = nil) -> Promise<HTTPResponse> {
 	guard FileManager.default.fileExists(atPath: file.path) else {
-		return Promise<Response>.reject("File not found")
+		return Promise<HTTPResponse>.reject("File not found")
 	}
 	return upload(path, data: nil, file: file, method: method, headers: headers, retry: retry, progress: progress)
 }
