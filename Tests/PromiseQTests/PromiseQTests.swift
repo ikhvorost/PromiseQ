@@ -872,6 +872,7 @@ final class PromiseQTests: XCTestCase {
 			.catch { error in
 				if case PromiseError.empty = error {
 					expectation.fulfill()
+					XCTAssert(error.localizedDescription == "The Promises empty.")
 				}
 			}
 		}
@@ -972,6 +973,7 @@ final class PromiseQTests: XCTestCase {
 			.catch { error in
 				if case PromiseError.empty = error {
 					expectation.fulfill()
+					XCTAssert(error.localizedDescription == "The Promises empty.")
 				}
 			}
 		}
@@ -1548,7 +1550,7 @@ final class PromiseQTests: XCTestCase {
 	}
 	
 	func testPromise_head() {
-		wait { expectation in
+		wait(timeout: 2) { expectation in
 			let path = "https://google.com"
 			fetch(path, method: .HEAD)
 			.then { response in
@@ -1693,7 +1695,7 @@ final class PromiseQTests: XCTestCase {
 	}
 	
 	func testPromise_fetchSuspendResume() {
-		wait(timeout: 2) { expectation in
+		wait(timeout: 3) { expectation in
 			
 			let promise = fetch("https://google.com")
 			.then { response in
@@ -1787,12 +1789,16 @@ final class PromiseQTests: XCTestCase {
 				
 				XCTAssert(data.count > 0)
 				
+				// Remove file
+				try FileManager.default.removeItem(atPath: url.path)
+				XCTAssert(response.text == nil)
+				XCTAssert(response.json == nil)
+				
 				expectations[1].fulfill()
 			}
 			.catch { error in
 				XCTFail()
 				dlog(error: error)
-				expectations[2].fulfill()
 			}
 		}
 	}
@@ -1826,7 +1832,7 @@ final class PromiseQTests: XCTestCase {
 	//let uploadURL = "http://speedtest.tele2.net/upload.php"
 	
 	func testPromise_uploadData() {
-		wait(count:2, timeout: 4) { expectations in
+		wait(count:2, timeout: 3) { expectations in
 			let data = Data(Array(repeating: UInt8(0), count: 1024 * 1024)) // 1MB
 			upload(uploadURL, data: data) { task, sent, total in
 				let percent = Double(sent) / Double(total)
@@ -1849,15 +1855,27 @@ final class PromiseQTests: XCTestCase {
 	}
 	
 	func testPromise_uploadFile() {
-		wait(count:2, timeout: 3) { expectations in
+		wait(count:3, timeout: 3) { expectations in
 			let url = URL(fileURLWithPath: NSTemporaryDirectory() + "upload.tmp")
+			
+			// File not found
+			upload(uploadURL, file: URL(fileURLWithPath: NSTemporaryDirectory() + "notfound.tmp"))
+			.then { _ in
+				XCTFail()
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "File not found")
+				expectations[0].fulfill()
+			}
+				
 			let data = Data(Array(repeating: UInt8(0), count: 1024 * 1024)) // 1MB
 			try? data.write(to: url)
 			
+			// Upload file
 			upload(uploadURL, file: url) { task, sent, total in
 				let percent = Double(sent) / Double(total)
 				if percent == 1.0 {
-					expectations[0].fulfill()
+					expectations[1].fulfill()
 				}
 			}
 			.then { response in
@@ -1865,11 +1883,35 @@ final class PromiseQTests: XCTestCase {
 					throw response.statusCodeDescription
 				}
 				
-				expectations[1].fulfill()
+				expectations[2].fulfill()
 			}
 			.catch { error in
 				XCTFail()
 				dlog(error: error)
+			}
+		}
+	}
+	
+	func testPromise_uploadCancel() {
+		wait(timeout: 3) { expectation in
+			let data = Data(Array(repeating: UInt8(0), count: 1024 * 1024)) // 1MB
+			let promise = upload(uploadURL, data: data) { task, written, total  in
+				let percent = Double(written) / Double(total)
+				if percent == 1.0 {
+					XCTFail()
+				}
+			}
+			.then { response in
+				XCTFail()
+			}
+			.catch { error in
+				if case PromiseError.cancelled = error {
+					expectation.fulfill()
+				}
+			}
+			
+			asyncAfter {
+				promise.cancel()
 			}
 		}
 	}

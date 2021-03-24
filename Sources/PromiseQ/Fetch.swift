@@ -126,12 +126,16 @@ public class HTTPResponse {
 		self.result = result
 	}
 	
-	deinit {
+	private func clean() {
 		if case let .location(url) = result {
 			DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {
 				try? FileManager.default.removeItem(at: url)
 			}
 		}
+	}
+	
+	deinit {
+		clean()
 	}
 }
 
@@ -219,12 +223,7 @@ private class SessionDownloadDelegate: NSObject, URLSessionDownloadDelegate {
 		try? url.setResourceValues(values)
 		url = (url as NSURL).deletingLastPathComponent!.appendingPathComponent(name)
 
-		guard let httpResponse = downloadTask.response as? HTTPURLResponse else {
-			reject(ErrorNotHTTP)
-			return
-		}
-		
-		let response = HTTPResponse(response: httpResponse, result: .location(url))
+		let response = HTTPResponse(response: downloadTask.response as! HTTPURLResponse, result: .location(url))
 		resolve(response)
 	}
 }
@@ -286,13 +285,8 @@ private func upload(_ path: String, data: Data?, file: URL?, method: HTTPMethod 
 				return
 			}
 			
-			guard let response = response as? HTTPURLResponse else {
-				reject(ErrorNotHTTP)
-				return
-			}
-			
 			assert(data != nil)
-			resolve(HTTPResponse(response: response, result: .data(data!)))
+			resolve(HTTPResponse(response: response as! HTTPURLResponse, result: .data(data!)))
 		}
 		
 		task = file != nil
