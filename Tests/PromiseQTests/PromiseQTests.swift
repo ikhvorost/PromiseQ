@@ -1460,10 +1460,31 @@ final class PromiseQTests: XCTestCase {
 	}
 	
 	func testPromise_badURL() {
-		wait { expectation in
+		wait(count: 2) { expectations in
 			Promise.any(
 				fetch(""),
-				upload("ftp://some.com", data: Data()),
+				upload("", data: Data()),
+				download("")
+			)
+			.then { result in
+				XCTFail()
+			}
+			.catch { error in
+				if case let PromiseError.aggregate(errors) = error {
+					errors.forEach {
+						XCTAssert($0.localizedDescription == "Bad URL")
+					}
+					expectations[0].fulfill()
+				}
+			}
+			
+			let url = URL(string: "123")!
+			let request = URLRequest(url: url)
+			Promise.any(
+				fetch("123"),
+				URLSession.shared.fetch(url),
+				URLSession.shared.fetch(request),
+				upload("123", data: Data()),
 				download("123")
 			)
 			.then { result in
@@ -1471,28 +1492,11 @@ final class PromiseQTests: XCTestCase {
 			}
 			.catch { error in
 				if case let PromiseError.aggregate(errors) = error {
-					XCTAssert(errors.count == 3)
 					errors.forEach {
-						XCTAssert($0.localizedDescription == "Bad URL")
+						XCTAssert($0.localizedDescription == "Not HTTP")
 					}
-					expectation.fulfill()
+					expectations[1].fulfill()
 				}
-			}
-		}
-	}
-	
-	// http://speedtest.tele2.net/
-	func testPromise_notHTTP() {
-		wait(timeout:5) { expectation in
-			// Download
-			let url = URL(string: "ftp://speedtest:speedtest@ftp.otenet.gr/test1Mb.db")!
-			URLSession.shared.fetch(url)
-			.then { result in
-				XCTFail()
-			}
-			.catch { error in
-				XCTAssert(error.localizedDescription == "Not HTTP")
-				expectation.fulfill()
 			}
 		}
 	}

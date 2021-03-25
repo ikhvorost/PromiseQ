@@ -67,15 +67,19 @@ extension URLSessionDataTask: Asyncable {
 extension URLSessionDownloadTask: Asyncable {
 }
 
-extension URL {
-	
-	init?(httpURL url: String) {
-		guard url.lowercased().hasPrefix("http://") || url.lowercased().hasPrefix("https://") else {
-			return nil
-		}
-		
-		self.init(string: url)
+fileprivate func isHTTP(_ path: String) -> Bool {
+	let url = path.lowercased()
+	return url.hasPrefix("http://") || url.hasPrefix("https://")
+}
+
+fileprivate func url(_ path: String) -> Result<URL, Error> {
+	guard let url = URL(string: path) else {
+		return .failure(ErrorBadURL)
 	}
+	guard isHTTP(path) else {
+		return .failure(ErrorNotHTTP)
+	}
+	return .success(url)
 }
 
 fileprivate let ErrorBadURL: Error = "Bad URL"
@@ -142,26 +146,29 @@ public class HTTPResponse {
 public extension URLSession  {
 	
 	func fetch(_ request: URLRequest, retry: Int = 0) -> Promise<HTTPResponse> {
-		Promise<HTTPResponse>(retry: retry) { resolve, reject, task in
+		guard let url = request.url?.absoluteString, isHTTP(url) else {
+			return Promise<HTTPResponse>.reject(ErrorNotHTTP)
+		}
+		
+		return Promise<HTTPResponse>(retry: retry) { resolve, reject, task in
 			task = self.dataTask(with: request) { data, response, error in
 				guard error == nil else {
 					reject(error!)
 					return
 				}
 				
-				guard let response = response as? HTTPURLResponse else {
-					reject(ErrorNotHTTP)
-					return
-				}
-				
 				assert(data != nil)
-				resolve(HTTPResponse(response: response, result: .data(data!)))
+				resolve(HTTPResponse(response: response as! HTTPURLResponse, result: .data(data!)))
 			}
 			task?.resume()
 		}
 	}
 	
 	func fetch(_ url: URL, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
+		guard isHTTP(url.absoluteString) else {
+			return Promise<HTTPResponse>.reject(ErrorNotHTTP)
+		}
+		
 		var request = URLRequest(url: url)
 		request.httpMethod = method.rawValue
 		request.allHTTPHeaderFields = headers
@@ -172,10 +179,12 @@ public extension URLSession  {
 	}
 	
 	func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
-		guard let url = URL(httpURL: path) else {
-			return Promise<HTTPResponse>.reject(ErrorBadURL)
+		switch url(path) {
+			case let .failure(error):
+				return Promise<HTTPResponse>.reject(error)
+			case let .success(url):
+				return fetch(url, method: method, headers: headers, body: body, retry: retry)
 		}
-		return fetch(url, method: method, headers: headers, body: body, retry: retry)
 	}
 
 }
@@ -229,21 +238,23 @@ private class SessionDownloadDelegate: NSObject, URLSessionDownloadDelegate {
 }
 
 public func download(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0, progress: Progress? = nil) -> Promise<HTTPResponse> {
-	guard let url = URL(httpURL: path) else {
-		return Promise<HTTPResponse>.reject(ErrorBadURL)
-	}
-	
-	var request = URLRequest(url: url)
-	request.httpMethod = method.rawValue
-	request.allHTTPHeaderFields = headers
-	request.httpBody = body
-	
-	return Promise<HTTPResponse>(retry: retry) { resolve, reject, task in
-		let delegate = SessionDownloadDelegate(resolve: resolve, reject: reject, progress: progress)
-		let session = URLSession.init(configuration: .default, delegate: delegate, delegateQueue: nil)
-
-		task = session.downloadTask(with: request)
-		task?.resume()
+	switch url(path) {
+		case let .failure(error):
+			return Promise<HTTPResponse>.reject(error)
+		
+		case let .success(url):
+			var request = URLRequest(url: url)
+			request.httpMethod = method.rawValue
+			request.allHTTPHeaderFields = headers
+			request.httpBody = body
+			
+			return Promise<HTTPResponse>(retry: retry) { resolve, reject, task in
+				let delegate = SessionDownloadDelegate(resolve: resolve, reject: reject, progress: progress)
+				let session = URLSession.init(configuration: .default, delegate: delegate, delegateQueue: nil)
+				
+				task = session.downloadTask(with: request)
+				task?.resume()
+			}
 	}
 }
 
@@ -265,34 +276,36 @@ private class SessionTaskDelegate: NSObject, URLSessionTaskDelegate {
 
 private func upload(_ path: String, data: Data?, file: URL?, method: HTTPMethod = .POST, headers: [String : String]? = nil,
 					retry: Int = 0, progress: Progress?) -> Promise<HTTPResponse> {
-	guard let url = URL(httpURL: path) else {
-		return Promise<HTTPResponse>.reject(ErrorBadURL)
-	}
-	
-	var request = URLRequest(url: url)
-	request.httpMethod = method.rawValue
-	request.allHTTPHeaderFields = headers
-	
-	return Promise<HTTPResponse>(retry: retry) { resolve, reject, task in
-		let delegate = SessionTaskDelegate(progress: progress)
-		let session = URLSession.init(configuration: .default, delegate: delegate, delegateQueue: nil)
+	switch url(path) {
+		case let .failure(error):
+			return Promise<HTTPResponse>.reject(error)
 		
-		let completion = { (data: Data?, response: URLResponse?, error: Error?) in
-			session.invalidateAndCancel()
+		case let .success(url):
+			var request = URLRequest(url: url)
+			request.httpMethod = method.rawValue
+			request.allHTTPHeaderFields = headers
 			
-			guard error == nil else {
-				reject(error!)
-				return
+			return Promise<HTTPResponse>(retry: retry) { resolve, reject, task in
+				let delegate = SessionTaskDelegate(progress: progress)
+				let session = URLSession.init(configuration: .default, delegate: delegate, delegateQueue: nil)
+				
+				let completion = { (data: Data?, response: URLResponse?, error: Error?) in
+					session.invalidateAndCancel()
+					
+					guard error == nil else {
+						reject(error!)
+						return
+					}
+					
+					assert(data != nil)
+					resolve(HTTPResponse(response: response as! HTTPURLResponse, result: .data(data!)))
+				}
+				
+				task = file != nil
+					? session.uploadTask(with: request, fromFile: file!, completionHandler: completion)
+					: session.uploadTask(with: request, from: data, completionHandler: completion)
+				task?.resume()
 			}
-			
-			assert(data != nil)
-			resolve(HTTPResponse(response: response as! HTTPURLResponse, result: .data(data!)))
-		}
-		
-		task = file != nil
-			? session.uploadTask(with: request, fromFile: file!, completionHandler: completion)
-			: session.uploadTask(with: request, from: data, completionHandler: completion)
-		task?.resume()
 	}
 }
 
