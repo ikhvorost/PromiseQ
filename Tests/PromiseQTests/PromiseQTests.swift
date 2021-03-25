@@ -1483,7 +1483,7 @@ final class PromiseQTests: XCTestCase {
 	
 	// http://speedtest.tele2.net/
 	func testPromise_notHTTP() {
-		wait(timeout:3) { expectation in
+		wait(timeout:5) { expectation in
 			// Download
 			let url = URL(string: "ftp://speedtest:speedtest@ftp.otenet.gr/test1Mb.db")!
 			URLSession.shared.fetch(url)
