@@ -1544,6 +1544,8 @@ final class PromiseQTests: XCTestCase {
 					throw "No json dict"
 				}
 				XCTAssert(dict.count > 0)
+				
+				XCTAssert(response.location == nil)
 
 				expectation.fulfill()
 			}
