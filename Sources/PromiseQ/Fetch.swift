@@ -26,7 +26,7 @@
 
 import Foundation
 
-
+/// The HTTP request method.
 public enum HTTPMethod : String {
 	/// The GET method requests a representation of the specified resource. Requests using GET should only retrieve data.
 	case GET
@@ -58,6 +58,7 @@ public enum HTTPMethod : String {
 
 /// String errors
 extension String : LocalizedError {
+	/// A localized message describing what error occurred.
 	public var errorDescription: String? { return self }
 }
 
@@ -72,9 +73,11 @@ fileprivate func isHTTP(_ path: String) -> Bool {
 	return url.hasPrefix("http://") || url.hasPrefix("https://")
 }
 
+fileprivate let ErrorNotHTTP: Error = "Not HTTP"
+ 
 fileprivate func url(_ path: String) -> Result<URL, Error> {
 	guard let url = URL(string: path) else {
-		return .failure(ErrorBadURL)
+		return .failure("Bad URL")
 	}
 	guard isHTTP(path) else {
 		return .failure(ErrorNotHTTP)
@@ -82,26 +85,29 @@ fileprivate func url(_ path: String) -> Result<URL, Error> {
 	return .success(url)
 }
 
-fileprivate let ErrorBadURL: Error = "Bad URL"
-fileprivate let ErrorNotHTTP: Error = "Not HTTP"
-
-public enum ResponseResult {
+fileprivate enum ResponseResult {
 	case data(Data)
 	case location(URL)
 }
 
+/// Provides methods for accessing information specific to HTTP protocol responses.
 public class HTTPResponse {
+	/// The metadata associated with the response to an HTTP protocol URL load request.
 	public let response: HTTPURLResponse
-	public let result: ResponseResult
 	
+	private let result: ResponseResult
+	
+	/// HTTP status code is 200-299.
 	public var ok: Bool {
 		(200...299).contains(response.statusCode)
 	}
 	
+	/// Returns a localized string corresponding to a specified HTTP status code.
 	public var statusCodeDescription: String {
 		"HTTP \(response.statusCode) - " + HTTPURLResponse.localizedString(forStatusCode: response.statusCode)
 	}
 	
+	/// Returns the response data or the file data at the location.
 	public var data: Data? {
 		switch result {
 			case let .data(data):
@@ -111,18 +117,26 @@ public class HTTPResponse {
 		}
 	}
 	
-	public var text: String? {
-		if let data = data {
-			return String(data: data, encoding: .utf8)
+	/// Returns the location of the downloaded file.
+	public var location: URL? {
+		if case let .location(url) = result {
+			return url
 		}
 		return nil
 	}
 	
+	/// Reads the response data or the file data at the location and returns as text.
+	public var text: String? {
+		data != nil
+			? String(data: data!, encoding: .utf8)
+			: nil
+	}
+	
+	/// Parse the response data or the file data at the location and returns as dictionary.
 	public var json: Any? {
-		if let data = data {
-			return try? JSONSerialization.jsonObject(with: data)
-		}
-		return nil
+		data != nil
+			? try? JSONSerialization.jsonObject(with: data!)
+			: nil
 	}
 	
 	fileprivate init(response: HTTPURLResponse, result: ResponseResult) {
@@ -145,6 +159,28 @@ public class HTTPResponse {
 
 public extension URLSession  {
 	
+	/// Creates a promise that retrieves the contents of a HTTP request object.
+	///
+	/// By creating a promise based on a request object with the session, you can tune various aspects of the task’s
+	/// behaviour, including the cache policy and timeout interval.
+	/// 
+	///		let url = URL(string: "https://google.com")!
+	///		let request = URLRequest(url: url)
+	///
+	///		URLSession.shared.fetch(request)
+	///		.then { response in
+	///			if response.ok {
+	///				print(response.statusCodeDescription)
+	///			}
+	///		}
+	///		// Prints: HTTP 200 - no error
+	///
+	/// - Parameters:
+	/// 	- request: A URL request object that provides the URL, cache policy, request type, body data or body stream, and so on.
+	///		- retry: The max number of retry attempts to resolve the promise after rejection.
+	/// - Returns: A new `Promise<HTTPResponse>`
+	/// - SeeAlso: `HTTPResponse`
+	///
 	func fetch(_ request: URLRequest, retry: Int = 0) -> Promise<HTTPResponse> {
 		guard let url = request.url?.absoluteString, isHTTP(url) else {
 			return Promise<HTTPResponse>.reject(ErrorNotHTTP)
@@ -164,6 +200,30 @@ public extension URLSession  {
 		}
 	}
 	
+	/// Creates a promise that retrieves the contents of a HTTP URL object.
+	///
+	/// By creating a promise based on a HTTP URL object with the URL session, you can tune various aspects of the task’s
+	/// behaviour, including the cache policy and timeout interval.
+	///
+	///		let url = URL(string: "https://google.com")!
+	///
+	///		URLSession.shared.fetch(url)
+	///		.then { response in
+	///			if response.ok {
+	///				print(response.statusCodeDescription)
+	///			}
+	///		}
+	///		// Prints: HTTP 200 - no error
+	///
+	/// - Parameters:
+	/// 	- url: The URL for the request.
+	/// 	- method: The HTTP request method.
+	/// 	- headers: A dictionary containing all of the HTTP header fields for a request.
+	/// 	- body: The data sent as the message body of a request, such as for an HTTP POST request.
+	///		- retry: The max number of retry attempts to resolve the promise after rejection.
+	/// - Returns: A new `Promise<HTTPResponse>`
+	/// - SeeAlso: `HTTPResponse`
+	///
 	func fetch(_ url: URL, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
 		guard isHTTP(url.absoluteString) else {
 			return Promise<HTTPResponse>.reject(ErrorNotHTTP)
@@ -173,11 +233,32 @@ public extension URLSession  {
 		request.httpMethod = method.rawValue
 		request.allHTTPHeaderFields = headers
 		request.httpBody = body
-		request.cachePolicy = .reloadIgnoringLocalCacheData
 		
 		return fetch(request, retry: retry)
 	}
 	
+	/// Creates a promise that retrieves the contents of a HTTP path.
+	///
+	/// By creating a promise based on a HTTP path with the URL session, you can tune various aspects of the task’s
+	/// behaviour, including the cache policy and timeout interval.
+	///
+	///		URLSession.shared.fetch("https://google.com")
+	///		.then { response in
+	///			if response.ok {
+	///				print(response.statusCodeDescription)
+	///			}
+	///		}
+	///		// Prints: HTTP 200 - no error
+	///
+	/// - Parameters:
+	/// 	- path: The HTTP path for the request.
+	/// 	- method: The HTTP request method.
+	/// 	- headers: A dictionary containing all of the HTTP header fields for a request.
+	/// 	- body: The data sent as the message body of a request, such as for an HTTP POST request.
+	///		- retry: The max number of retry attempts to resolve the promise after rejection.
+	/// - Returns: A new `Promise<HTTPResponse>`
+	/// - SeeAlso: `HTTPResponse`
+	///
 	func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
 		switch url(path) {
 			case let .failure(error):
@@ -189,13 +270,42 @@ public extension URLSession  {
 
 }
 
+/// Global function that creates a promise that retrieves the contents of a HTTP path.
+///
+/// Creating a promise based on a HTTP path on the `URLSession.shared`.
+///
+///		fetch("https://google.com")
+///		.then { response in
+///			if response.ok {
+///				print(response.statusCodeDescription)
+///			}
+///		}
+///		// Prints: HTTP 200 - no error
+///
+/// - Parameters:
+/// 	- path: The HTTP path for the request.
+/// 	- method: The HTTP request method.
+/// 	- headers: A dictionary containing all of the HTTP header fields for a request.
+/// 	- body: The data sent as the message body of a request, such as for an HTTP POST request.
+///		- retry: The max number of retry attempts to resolve the promise after rejection.
+/// - Returns: A new `Promise<HTTPResponse>`
+/// - SeeAlso: `HTTPResponse`
+///
 public func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0) -> Promise<HTTPResponse> {
 	URLSession.shared.fetch(path, method: method, headers: headers, body: body, retry: retry)
 }
 
 // MARK: - Download
 
-public typealias Progress = (URLSessionTask, Int64, Int64) -> Void
+///
+/// Periodically informs about the upload/download’s progress.
+///
+/// - Parameters:
+/// 	- task: The upload/download task.
+/// 	- bytes: The total number of bytes sent/transferred.
+/// 	- totalBytes: The expected length of the data.
+///
+public typealias Progress = (_ task: URLSessionTask, _ bytes: Int64, _ totalBytes: Int64) -> Void
 
 private class SessionDownloadDelegate: NSObject, URLSessionDownloadDelegate {
 	let resolve: (HTTPResponse) -> Void
