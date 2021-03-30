@@ -187,10 +187,9 @@ public struct Promise<T> {
 	private let autoRun: DispatchWorkItem
 	private let monitor: Monitor
 	
-	public var onDeinit: (() -> Void)? {
-		didSet {
-			monitor.onDeinit = onDeinit
-		}
+	/// Set deinit handler
+	public func onDeinit(_ block: @escaping () -> Void) -> Void {
+		monitor.onDeinit = block
 	}
 	
 	private init(_ monitor: Monitor, f: @escaping (@escaping (Result<T, Error>) -> Void) -> Void) {

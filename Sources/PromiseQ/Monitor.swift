@@ -74,6 +74,7 @@ class Monitor : Asyncable {
 	@Atomic var task: Asyncable?
 	
 	var onDeinit: (() -> Void)?
+	
 	deinit {
 		onDeinit?()
 	}

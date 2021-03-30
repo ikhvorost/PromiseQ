@@ -1528,7 +1528,7 @@ final class PromiseQTests: XCTestCase {
 					throw response.statusCodeDescription
 				}
 				
-				guard case let .data(data) = response.result else {
+				guard let data = response.data else {
 					throw "No data"
 				}
 				
@@ -1562,7 +1562,7 @@ final class PromiseQTests: XCTestCase {
 					throw response.statusCodeDescription
 				}
 				
-				guard case let .data(data) = response.result else {
+				guard let data = response.data else {
 					throw "No data"
 				}
 				
@@ -1586,7 +1586,7 @@ final class PromiseQTests: XCTestCase {
 					throw response.statusCodeDescription
 				}
 				
-				guard case let .data(data) = response.result else {
+				guard let data = response.data else {
 					throw "No data"
 				}
 				
@@ -1612,7 +1612,7 @@ final class PromiseQTests: XCTestCase {
 					throw response.statusCodeDescription
 				}
 				
-				guard case let .data(data) = response.result else {
+				guard let data = response.data else {
 					throw "No data"
 				}
 				
@@ -1638,7 +1638,7 @@ final class PromiseQTests: XCTestCase {
 					throw response.statusCodeDescription
 				}
 				
-				guard case let .data(data) = response.result else {
+				guard let data = response.data else {
 					throw "No data"
 				}
 				
@@ -1664,7 +1664,7 @@ final class PromiseQTests: XCTestCase {
 					throw response.statusCodeDescription
 				}
 				
-				guard case let .data(data) = response.result else {
+				guard let data = response.data else {
 					throw "No data"
 				}
 				
@@ -1739,7 +1739,7 @@ final class PromiseQTests: XCTestCase {
 	}
 	
 	func testPromise_fetchSuspendCancelResume() {
-		wait(count:2, timeout: 2) { expectations in
+		wait(count:2) { expectations in
 			expectations[0].isInverted = true
 			
 			let promise = fetch("https://google.com")
@@ -1781,11 +1781,11 @@ final class PromiseQTests: XCTestCase {
 					throw response.statusCodeDescription
 				}
 				
-				guard case let .location(url) = response.result else {
+				guard let location = response.location else {
 					throw "No location"
 				}
 				
-				XCTAssert(FileManager.default.fileExists(atPath: url.path))
+				XCTAssert(FileManager.default.fileExists(atPath: location.path))
 				
 				guard let data = response.data else {
 					throw "No data"
@@ -1794,7 +1794,7 @@ final class PromiseQTests: XCTestCase {
 				XCTAssert(data.count > 0)
 				
 				// Remove file
-				try FileManager.default.removeItem(atPath: url.path)
+				try FileManager.default.removeItem(atPath: location.path)
 				XCTAssert(response.text == nil)
 				XCTAssert(response.json == nil)
 				
@@ -1924,7 +1924,7 @@ final class PromiseQTests: XCTestCase {
 	
 	func testPromise_Leak() {
 		wait(timeout: 1) { expectation in
-			var promise = Promise { return 200 }
+			let promise = Promise { return 200 }
 			.then { _ in }
 			.then { (_, resolve: @escaping (Int) -> Void, reject) in
 				asyncAfter {
@@ -1934,7 +1934,7 @@ final class PromiseQTests: XCTestCase {
 			.then { _ in throw "error" }
 			.catch { _ in }
 			
-			promise.onDeinit = {
+			promise.onDeinit {
 				expectation.fulfill()
 			}
 		}
@@ -1943,20 +1943,20 @@ final class PromiseQTests: XCTestCase {
 	func testPromise_LeakAll() {
 		wait(count: 3) { expectations in
 			
-			var promise1 = Promise { return 200 }
-			promise1.onDeinit = {
+			let promise1 = Promise { return 200 }
+			promise1.onDeinit {
 				expectations[0].fulfill()
 			}
 			
-			var promise2 = Promise { return 300 }
-			promise2.onDeinit = {
+			let promise2 = Promise { return 300 }
+			promise2.onDeinit {
 				expectations[1].fulfill()
 			}
 			
-			var promiseAll = Promise.all (promise1, promise2)
+			let promiseAll = Promise.all (promise1, promise2)
 				.then { _ in
 				}
-			promiseAll.onDeinit = {
+			promiseAll.onDeinit {
 				expectations[2].fulfill()
 			}
 		}
@@ -2013,7 +2013,7 @@ final class PromiseQTests: XCTestCase {
 					throw response.statusCodeDescription
 				}
 				
-				guard case let .data(data) = response.result else {
+				guard let data = response.data else {
 					throw "No data"
 				}
 				
