@@ -107,7 +107,7 @@ public class HTTPResponse {
 		"HTTP \(response.statusCode) - " + HTTPURLResponse.localizedString(forStatusCode: response.statusCode)
 	}
 	
-	/// Returns the response data or the file data at the location.
+	/// Returns the response data or a downloaded file data if the response location exists.
 	public var data: Data? {
 		switch result {
 			case let .data(data):
@@ -237,9 +237,9 @@ public extension URLSession  {
 		return fetch(request, retry: retry)
 	}
 	
-	/// Creates a promise that retrieves the contents of a HTTP path.
+	/// Creates a promise that retrieves the contents of a HTTP URL path.
 	///
-	/// By creating a promise based on a HTTP path with the URL session, you can tune various aspects of the task’s
+	/// By creating a promise based on a HTTP URL path with the URL session, you can tune various aspects of the task’s
 	/// behaviour, including the cache policy and timeout interval.
 	///
 	///		URLSession.shared.fetch("https://google.com")
@@ -251,7 +251,7 @@ public extension URLSession  {
 	///		// Prints: HTTP 200 - no error
 	///
 	/// - Parameters:
-	/// 	- path: The HTTP path for the request.
+	/// 	- path: The HTTP URL path for the request.
 	/// 	- method: The HTTP request method.
 	/// 	- headers: A dictionary containing all of the HTTP header fields for a request.
 	/// 	- body: The data sent as the message body of a request, such as for an HTTP POST request.
@@ -270,9 +270,9 @@ public extension URLSession  {
 
 }
 
-/// Global function that creates a promise that retrieves the contents of a HTTP path.
+/// Creates a promise that retrieves the contents of a HTTP URL path.
 ///
-/// Creating a promise based on a HTTP path on the `URLSession.shared`.
+/// Creating a promise based on a HTTP URL path on the `URLSession.shared`.
 ///
 ///		fetch("https://google.com")
 ///		.then { response in
@@ -283,7 +283,7 @@ public extension URLSession  {
 ///		// Prints: HTTP 200 - no error
 ///
 /// - Parameters:
-/// 	- path: The HTTP path for the request.
+/// 	- path: The HTTP URL path for the request.
 /// 	- method: The HTTP request method.
 /// 	- headers: A dictionary containing all of the HTTP header fields for a request.
 /// 	- body: The data sent as the message body of a request, such as for an HTTP POST request.
@@ -297,8 +297,7 @@ public func fetch(_ path: String, method: HTTPMethod = .GET, headers: [String : 
 
 // MARK: - Download
 
-///
-/// Periodically informs about the upload/download’s progress.
+/// Function that periodically informs about the upload/download’s progress.
 ///
 /// - Parameters:
 /// 	- task: The upload/download task.
@@ -347,6 +346,26 @@ private class SessionDownloadDelegate: NSObject, URLSessionDownloadDelegate {
 	}
 }
 
+/// Creates a promise that retrieves the contents of a HTTP URL path and saves the results to a file.
+///
+///		download("https://google.com")
+///		.then { response in
+/// 		if response.ok, let location = response.location {
+///				print(location.absoluteURL)
+///			}
+///		}
+///		// Prints: file:///var/folders/nt/mrsc3jhd13j8zhrhxy4x23y40000gp/T/pq_CFNetworkDownload_hGKuLu.tmp
+///
+/// - Parameters:
+/// 	- path: The HTTP path for the request.
+/// 	- method: The HTTP request method.
+/// 	- headers: A dictionary containing all of the HTTP header fields for a request.
+/// 	- body: The data sent as the message body of a request, such as for an HTTP POST request.
+///		- retry: The max number of retry attempts to resolve the promise after rejection.
+///		- progress: Periodically informs about the download’s progress.
+/// - Returns: A new `Promise<HTTPResponse>`.
+/// - SeeAlso: `HTTPResponse`, `Progress`.
+///
 public func download(_ path: String, method: HTTPMethod = .GET, headers: [String : String]? = nil, body: Data? = nil, retry: Int = 0, progress: Progress? = nil) -> Promise<HTTPResponse> {
 	switch url(path) {
 		case let .failure(error):
@@ -367,7 +386,6 @@ public func download(_ path: String, method: HTTPMethod = .GET, headers: [String
 			}
 	}
 }
-
 
 // MARK: - Upload
 
@@ -419,10 +437,68 @@ private func upload(_ path: String, data: Data?, file: URL?, method: HTTPMethod 
 	}
 }
 
+/// Creates a promise that uploads the provided data to HTTP URL path.
+///
+///		upload(path, data: data) { task, sent, total in
+///			let percent = Double(sent) / Double(total)
+///		  	print(percent)
+///		}
+///		.then { response in
+///			if response.ok {
+///				print(response.statusCodeDescription)
+///		   	}
+///		}
+///		// Prints:
+///		0.03125
+///		0.0625
+///		...
+///		0.9375
+///		1.0
+///		HTTP 200 - no error
+///
+/// - Parameters:
+/// 	- path: The HTTP path for the request.
+/// 	- data: The body data for the request..
+/// 	- method: The HTTP request method.
+/// 	- headers: A dictionary containing all of the HTTP header fields for a request.
+/// 	- retry: The max number of retry attempts to resolve the promise after rejection.
+/// 	- progress: Periodically informs about the uploads’s progress.
+/// - Returns: A new `Promise<HTTPResponse>`.
+/// - SeeAlso: `HTTPResponse`, `Progress`.
+///
 public func upload(_ path: String, data: Data, method: HTTPMethod = .POST, headers: [String : String]? = nil, retry: Int = 0, progress: Progress? = nil) -> Promise<HTTPResponse> {
 	return upload(path, data: data, file: nil, method: method, headers: headers, retry: retry, progress: progress)
 }
 
+/// Creates a promise that uploads the specified file to HTTP URL path.
+///
+///		upload(path, file: file) { task, sent, total in
+///			let percent = Double(sent) / Double(total)
+///		  	print(percent)
+///		}
+///		.then { response in
+///			if response.ok {
+///				print(response.statusCodeDescription)
+///		   	}
+///		}
+///		// Prints:
+///		0.03125
+///		0.0625
+///		...
+///		0.9375
+///		1.0
+///		HTTP 200 - no error
+///
+/// - Parameters:
+/// 	- path: The HTTP path for the request.
+/// 	- file: The URL of the file to upload..
+/// 	- method: The HTTP request method.
+/// 	- headers: A dictionary containing all of the HTTP header fields for a request.
+/// 	- retry: The max number of retry attempts to resolve the promise after rejection.
+/// 	- progress: Periodically informs about the uploads’s progress.
+/// - Returns: A new `Promise<HTTPResponse>`.
+/// - SeeAlso: `HTTPResponse`, `Progress`.
+///
 public func upload(_ path: String, file: URL, method: HTTPMethod = .POST, headers: [String : String]? = nil, retry: Int = 0, progress: Progress? = nil) -> Promise<HTTPResponse> {
 	guard FileManager.default.fileExists(atPath: file.path) else {
 		return Promise<HTTPResponse>.reject("File not found")
