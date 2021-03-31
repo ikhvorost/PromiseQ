@@ -1756,14 +1756,14 @@ final class PromiseQTests: XCTestCase {
 			
 			asyncAfter(0.1) {
 				promise.suspend()
-			}
-			
-			asyncAfter(0.3) {
-				promise.cancel()
-			}
-			
-			asyncAfter(0.6) {
-				promise.resume()
+				
+				asyncAfter(0.2) {
+					promise.cancel()
+					
+					asyncAfter(0.2) {
+						promise.resume()
+					}
+				}
 			}
 		}
 	}
