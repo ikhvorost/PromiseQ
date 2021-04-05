@@ -193,7 +193,7 @@ Promise {
 }
 
 // Same as above
-Promise.reject(error)
+Promise<Void>.reject(error)
 ```
 
 ### `Promise.all`
@@ -234,8 +234,9 @@ Promise.all(settled: true,
     print(results)
 }
 // Prints [error, 200]
-
 ```
+
+If there are no promises or array of promises is empty the promise resolves with empty array.
 
 ### `Promise.race`
 
@@ -260,6 +261,8 @@ Promise.race(
 // Prints "200"
 ```
 
+If there are no promises or array of promises is empty the promise rejects with `PromiseError.empty` error.
+
 ### `Promise.any`
 
 It's similar to `Promise.race`, but waits only for the first fulfilled promise and gets its result.
@@ -279,8 +282,9 @@ Promise.any(
 	print($0)
 }
 // Prints "200"
-
 ```
+
+If there are no promises or array of promises is empty the promise rejects with `PromiseError.empty` error.
 
 If all of the given promises are rejected, then the returned promise is rejected with `PromiseError.aggregate` – a special error that stores all promise errors.
 
@@ -297,10 +301,10 @@ Promise.any(
 )
 .catch { error in
 	if case let PromiseError.aggregate(errors) = error {
-		print(errors)
+		print(errors, "-", error.localizedDescription)
  	}
 }
-// Prints '["Error", "Fail"]'
+// Prints: '["Error", "Fail"]' - All Promises rejected.
 ```
 
 ## Advanced Usage
@@ -318,7 +322,7 @@ Promise(timeout: 10) { // Wait 10 secs for data
 }
 .catch(timeout: 1) { error in // Wait 1 sec to handle errors
 	if case PromiseError.timedOut = error {
-		print(error)
+		print(error.localizedDescription)
 	}
 	else {
 		handleError(error)
@@ -340,7 +344,7 @@ Promise(retry: 3) { // Makes 3 attempts to load data after the rejection
 	...
 }
 .catch { error in
-	print(error) // Calls if the `loadData` fails 4 times (1 + 3 retries)
+	print(error.localizedDescription) // Calls if the `loadData` fails 4 times (1 + 3 retries)
 }
 ```
 
@@ -393,16 +397,24 @@ promise.resume()
 
 ### `cancel`
 
-Cancels execution of the promise. Cancelation does not affect the execution of the promise that has already begun it cancels execution of next promises in the chain.
+Cancels execution of the promise and reject it with `PromiseError.cancelled` error. Cancelation does not affect the execution of the promise that has already begun it rejects the promise and stops execution of next promises in the chain.
 
 ``` swift
 let promise = Promise {
-	String(contentsOfFile: file) // Never runs
+	return "Text" // Never runs
 }
 .then { text in
 	print(text) // Never runs
 }
+.catch { error in
+	if case PromiseError.cancelled = error {
+		print(error.localizedDescription)
+	}
+}
+
 promise.cancel()
+
+// Prints: The Promise cancelled.
 ```
 
 You can also break the promise chain for some conditions to call `cancel` inside a closure of any promise e.g.:
@@ -513,33 +525,45 @@ DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
 
 ## Sample
 
-There are two variants of code to fetch avatars of first 30 GitHub users that use [`fetch(path:String)-> Promise<Data>`](Tests/PromiseQTests/PromiseQTests.swift#L132) utility function and [`User`](Tests/PromiseQTests/PromiseQTests.swift#L59) struct to parse a json response.
+There are two variants of code to fetch avatars of first 30 GitHub users that with `fetch` function.
 
 Using `then`:
 
 ``` swift
-fetch("https://api.github.com/users") // Load json with users
-.then { data in
-	try JSONDecoder().decode([User].self, from: data) // Parse json
+struct User : Codable {
+	let login: String
+	let avatar_url: String
 }
-.then { users -> Promise<Array<Data>> in
-	guard users.count > 0 else {
-		throw "Users list is empty"
+
+fetch("https://api.github.com/users") // Load json with users
+.then { response -> [User] in
+	guard response.ok else {
+		throw response.statusCodeDescription
 	}
-	return Promise.all( // Load avatars of all users
+
+	guard let data = response.data else {
+		throw "No data"
+	}
+
+	return try JSONDecoder().decode([User].self, from: data) // Parse json
+}
+.then { users -> Promise<Array<HTTPResponse>> in
+	return Promise.all(
 		users
 		.map { $0.avatar_url }
 		.map { fetch($0) }
 	)
 }
-.then { results in
-	results.map { UIImage(data: $0) } // Create array of images
+.then { responses in
+	responses
+		.compactMap { $0.data }
+		.compactMap { UIImage(data: $0)} // Create array of images
 }
 .then(.main) { images in
 	print(images.count) // Print a count of images on the main queue
 }
 .catch { error in
-	print("Error: \(error)")
+	print(error.localizedDescription)
 }
 ```
 
@@ -547,27 +571,32 @@ Using `async/await`:
 
 ``` swift
 async {
-	let usersData = try fetch("https://api.github.com/users").await() // Load json with users
-
-	let users = try JSONDecoder().decode([User].self, from: usersData) // Parse json
-	guard users.count > 0 else {
-		throw "Users list is empty"
+	let response = try fetch("https://api.github.com/users").await()
+	guard response.ok else {
+		throw response.statusCodeDescription
 	}
 
-	let imagesData = try async.all( // Load avatars of all users
-		users
+	guard let data = response.data else {
+		throw "No data"
+	}
+
+	let users = try JSONDecoder().decode([User].self, from: data)
+
+	let images =
+		try async.all(
+			users
 			.map { $0.avatar_url }
 			.map { fetch($0) }
-	).await()
-
-	let images = imagesData.map { UIImage(data: $0) } // Create array of images
+		).await()
+		.compactMap { $0.data }
+		.compactMap { UIImage(data: $0) }
 
 	async(.main) {
-		print(images.count) // Print a count of images on the main queue
+		print(images.count)
 	}
 }
 .catch { error in
-	print("Error: \(error)")
+	print(error.localizedDescription)
 }
 ```
 

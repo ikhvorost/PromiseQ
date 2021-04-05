@@ -692,7 +692,7 @@ public struct Promise<T> {
 	///		}
 	///
 	///		// Same as above
-	///		Promise.rejected(error)
+	///		Promise<Void>.rejected(error)
 	///
 	///	- Parameter error: The error of the rejected promise.
 	///	- Returns: A new rejected promise
