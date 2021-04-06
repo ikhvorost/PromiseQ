@@ -27,7 +27,7 @@ extension DispatchQueue {
 
 // MARK: -
 
-/// GitHub user fields
+/// Github user
 struct User : Codable {
 	let login: String
 	let avatar_url: String
@@ -1982,9 +1982,6 @@ final class PromiseQTests: XCTestCase {
 				return try JSONDecoder().decode([User].self, from: data)
 			}
 			.then { users -> Promise<Array<HTTPResponse>> in
-				guard users.count > 0 else {
-					throw "Users list is empty"
-				}
 				return Promise.all(
 					users
 					.map { $0.avatar_url }
@@ -2020,9 +2017,6 @@ final class PromiseQTests: XCTestCase {
 				}
 				
 				let users = try JSONDecoder().decode([User].self, from: data)
-				guard users.count > 0 else {
-					throw "Users list is empty"
-				}
 				
 				let images =
 					try async.all(

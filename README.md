@@ -28,7 +28,11 @@ Fast, powerful and lightweight implementation of Promises for Swift.
 	- [`suspend/resume`](#suspendresume)
 	- [`cancel`](#cancel)
 	- [`Asyncable`](#asyncable)
-- [Sample](#sample)
+- [Network requests](#network-requests)
+	- [`fetch`](#fetch)
+	- [`download`](#download)
+	- [`upload`](#upload)
+- [Samples](#sample)
 - [Installation](#installation)
 - [License](#license)
 
@@ -520,12 +524,151 @@ let promise = Promise<String> { resolve, reject, task in // `task` is in-out par
 DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
 	promise.cancel()
 }
-
 ```
 
-## Sample
+## Network requests
 
-There are two variants of code to fetch avatars of first 30 GitHub users that with `fetch` function.
+### `fetch`
+
+You can send network requests to the server and load new information whenever it’s needed with asynchronous `fetch` utility function. It starts the request right away and returns a promise that the calling code should use to get the result. The promise, returned by `fetch`, resolves with `HTTPResponse` object as soon as the server responds and you can use it to access to the response properties:
+
+- `ok: Bool` - `true` if the HTTP status code is 200-299.
+- `statusCodeDescription: String` – HTTP status code with description.
+- `response: HTTPURLResponse` - Response metadata object, such as HTTP headers and status code.
+- `data: Data?` - The data returned by the server.
+- `text: String?` - text from `data`.
+- `json: Any?` - json from `data`.
+
+For example:
+
+``` swift
+fetch("https://api.github.com/users/technoweenie") // Get github user's info
+.then { response in
+	guard response.ok else { // Check for the HTTP status code
+		throw response.statusCodeDescription
+	}
+
+	guard let json = response.json as? [String: Any] else { // Get json from the returned data
+	   throw "No JSON"
+	}
+
+	if let name = json["name"] as? String { // Get name of the user
+		print(name)
+	}
+}
+.catch {error in
+	print(error.localizedDescription)
+}
+
+// Prints: risk danger olson
+```
+
+By default `fetch` does `GET` request with default headers and empty body data but you can change that with optional parameters:
+
+- `method: HTTPMethod` - HTTP-method, e.g. `.GET`, `.POST` etc.
+- `headers: [String : String]?` - a dictionary containing all of the HTTP header fields for a request.
+- `body: Data?` - the request body.
+- `retry: Int` -  The max number of retry attempts to resolve the promise after rejection.
+
+``` swift
+async {
+	let response = try fetch(url,
+		method: .POST,
+		headers: ["Accept-Encoding" : "br, gzip, deflate"],
+		body: data
+	).await()
+
+	...
+}
+.catch {error in
+	print(error.localizedDescription)
+}
+```
+
+`fetch` uses `URLSession.default` to make requests by default but you also can call it on your session instance and tune various aspects of the session’s behavior, including the cache policy, timeout interval etc.:
+
+``` swift
+let config = URLSessionConfiguration.default
+config.timeoutIntervalForRequest = 120
+config.httpAdditionalHeaders = ["Accept-Encoding" : "br, gzip, deflate"]
+let session = URLSession(configuration: config)
+
+async {
+	let response = try session.fetch(url).await()
+	...
+}
+.catch {error in
+	print(error.localizedDescription)
+}
+```
+
+### `download`
+
+`download` works similar to `fetch` but saves data to a file and informs about the downloading progress, for instance:
+
+``` swift
+async {
+	let response = try download("http://speedtest.tele2.net/1MB.zip") { task, written, total in
+		let percent = Double(written) / Double(total)
+		print(percent)
+	}.await()
+
+	guard response.ok else {
+		throw response.statusCodeDescription
+	}
+
+	guard let location = response.location else {
+		throw "No location"
+	}
+
+	print(location)
+}
+.catch { error in
+	print(error.localizedDescription)
+}
+
+// Prints
+0.038433074951171875
+0.10195541381835938
+...
+0.9263648986816406
+1.0
+file:///var/folders/nt/mrsc3jhd13j8zhrhxy4x23y40000gp/T/pq_CFNetworkDownload_t94Pig.tmp
+```
+
+### `upload`
+
+`download` works similar to `fetch` but can upload data or a file to a server and informs about the uploading progress, for instance:
+
+``` swift
+async {
+	let response = try upload(url, data: data) { task, sent, total in
+		let percent = Double(sent) / Double(total)
+		print(percent)
+	}.await()
+
+	guard response.ok else {
+		throw response.statusCodeDescription
+	}
+
+	print("Uploaded")
+}
+.catch { error in
+	print(error.localizedDescription)
+}
+
+// Prints
+0.03125
+0.0625
+...
+0.96875
+1.0
+Uploaded
+```
+
+## Samples
+
+There are two variants of code to `fetch` avatars of first 30 GitHub users.
 
 Using `then`:
 
