@@ -32,7 +32,7 @@ Fast, powerful and lightweight implementation of Promises for Swift.
 	- [`fetch`](#fetch)
 	- [`download`](#download)
 	- [`upload`](#upload)
-- [Samples](#sample)
+- [Samples](#samples)
 - [Installation](#installation)
 - [License](#license)
 
@@ -743,7 +743,7 @@ async {
 }
 ```
 
-For more samples see [PromiseQTests.swift](Tests/ProiseQTests/PromiseQTests.swift).
+For more samples see [PromiseQTests.swift](Tests/PromiseQTests/PromiseQTests.swift).
 
 ## Installation
 
