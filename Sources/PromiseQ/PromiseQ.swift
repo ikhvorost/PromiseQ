@@ -652,6 +652,7 @@ public struct Promise<T> {
 	///
 	///	- Returns: A result of the promise.
 	/// - SeeAlso: async.
+	@discardableResult
 	public func await() throws -> T {
 		var result: T?
 		var error: Error?
