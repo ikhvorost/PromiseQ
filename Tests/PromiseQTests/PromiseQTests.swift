@@ -25,6 +25,23 @@ extension DispatchQueue {
 	}
 }
 
+extension XCTestCase {
+	
+	func wait(count: Int, timeout: TimeInterval = 1, name: String = #function, closure: ([XCTestExpectation]) -> Void) {
+		let expectations = (0..<count).map { _ in expectation(description: name) }
+		
+		closure(expectations)
+		
+		wait(for: expectations, timeout: timeout)
+	}
+	
+	func wait(timeout: TimeInterval = 1, name: String = #function, closure: (XCTestExpectation) -> Void) {
+		wait(count: 1, timeout: timeout, name: name) { expectations in
+			closure(expectations[0])
+		}
+	}
+}
+
 // MARK: -
 
 /// Github user
@@ -81,43 +98,22 @@ func dlog(error: Error, file: String = #file, function: String = #function, line
 }
 
 func asyncAfter(_ sec: Double = 0.25, closure: @escaping (() -> Void) ) {
-	DispatchQueue.global().asyncAfter(deadline: .now() + sec) {
-		closure()
-    }
+	DispatchQueue.global().asyncAfter(deadline: .now() + sec, execute: closure)
 }
 
 // MARK: -
 
+var GitHubHeaders: [String : String]? = {
+	if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] {
+		return ["Authorization" : "token \(token)"]
+	}
+	return nil
+}()
+
+// Url with large data to fetch
+let url = "https://developer.apple.com/swift/blog/"
+
 final class PromiseQTests: XCTestCase {
-	
-	var githubHeaders: [String : String]? {
-		if let token = ProcessInfo.processInfo.environment["GITHUB_TOKEN"] {
-			return ["Authorization" : "token \(token)"]
-		}
-		return nil
-	}
-	
-	// Url with large data to fetch
-	let url = "https://developer.apple.com/swift/blog/"
-	
-	func wait(count: Int, timeout: TimeInterval = 1, name: String = #function, closure: ([XCTestExpectation]) -> Void) {
-		let expectations = (0..<count).map { _ in expectation(description: name) }
-		
-		closure(expectations)
-		
-		wait(for: expectations, timeout: timeout)
-	}
-	
-	func wait(timeout: TimeInterval = 1, name: String = #function, closure: (XCTestExpectation) -> Void) {
-		wait(count: 1, timeout: timeout, name: name) { expectations in
-			closure(expectations[0])
-		}
-	}
-	
-	// Tests
-	
-//	override func setUp() {
-//	}
 	
 	func testPromise_AutoRun() {
 		wait(count: 2) { expectations in
@@ -314,6 +310,38 @@ final class PromiseQTests: XCTestCase {
 			.catch { error in
 				XCTAssert(error.localizedDescription == "Error")
 				expectation.fulfill()
+			}
+		}
+	}
+	
+	func testPromise_AsyncThrow() {
+		wait(count: 2) { expectations in
+			Promise<Int> { resolve, reject in
+				asyncAfter {
+					resolve(200)
+				}
+				throw "Error1"
+			}
+			.then { value in
+				XCTFail()
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Error1")
+				expectations[0].fulfill()
+			}
+			.then { (_, resolve: @escaping (Int) -> Void, reject) in
+				asyncAfter {
+					resolve(200) // Skip
+				}
+				throw "Error2"
+				
+			}
+			.then { value in
+				XCTFail()
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Error2")
+				expectations[1].fulfill()
 			}
 		}
 	}
@@ -1452,7 +1480,9 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	// MARK: - fetch
+}
+
+final class FetchTests: XCTestCase {
 	
 	struct JSONResponse : Codable {
 		let data: String?
@@ -1921,9 +1951,10 @@ final class PromiseQTests: XCTestCase {
 			}
 		}
 	}
-	
-	// MARK: - Leaks
-	
+}
+
+final class LeakTests: XCTestCase {
+
 	func testPromise_Leak() {
 		wait(timeout: 1) { expectation in
 			let promise = Promise { return 200 }
@@ -1963,13 +1994,14 @@ final class PromiseQTests: XCTestCase {
 			}
 		}
 	}
+}
 	
-	// MARK: - Samples
+final class SampleTests: XCTestCase {
 	
 	/// Load avatars of first 30 GitHub users
 	func testPromise_SampleThen() {
 		wait(timeout: 4) { expectation in
-			fetch("https://api.github.com/users", headers: githubHeaders, retry: 3)
+			fetch("https://api.github.com/users", headers: GitHubHeaders, retry: 3)
 			.then { response -> [User] in
 				guard response.ok else {
 					throw response.statusCodeDescription
@@ -2007,7 +2039,7 @@ final class PromiseQTests: XCTestCase {
 	func testPromise_SampleAwait() {
 		wait(timeout: 4) { expectation in
 			async {
-				let response = try fetch("https://api.github.com/users", headers: self.githubHeaders, retry: 3).await()
+				let response = try fetch("https://api.github.com/users", headers: GitHubHeaders, retry: 3).await()
 				guard response.ok else {
 					throw response.statusCodeDescription
 				}

@@ -77,7 +77,7 @@ private func retryAsync<T, U>(_ count: Int,
 							  monitor: Monitor,
 							  value: T,
 							  pending: @escaping (Result<U, Error>) -> Void,
-							  f: @escaping (T, @escaping (U) -> Void,  @escaping (Error) -> Void, inout Asyncable?) -> Void) {
+							  f: @escaping (T, @escaping (U) -> Void,  @escaping (Error) -> Void, inout Asyncable?) throws -> Void) {
 	
 	var r = count
 	let lock = DispatchSemaphore.Lock()
@@ -101,7 +101,13 @@ private func retryAsync<T, U>(_ count: Int,
 				pending(.failure(error))
 			}
 		}
-		f(value, rs, rj, &monitor.task)
+		
+		do {
+			try f(value, rs, rj, &monitor.task)
+		}
+		catch {
+			rj(error)
+		}
 	
 		lock.wait()
 	}
@@ -270,7 +276,7 @@ public struct Promise<T> {
 	/// - SeeAlso: `Asyncable`
 	@discardableResult
 	public init(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, retry: Int = 0, 
-				f: @escaping (@escaping (T) -> Void,  @escaping (Error) -> Void, inout Asyncable?) -> Void) {
+				f: @escaping (@escaping (T) -> Void,  @escaping (Error) -> Void, inout Asyncable?) throws -> Void) {
 		let monitor = Monitor()
 		self.init(monitor) { callback in
 			let p = pending(monitor: monitor, callback: callback)
@@ -281,7 +287,8 @@ public struct Promise<T> {
 						   monitor: monitor,
 						   value: (),
 						   pending: p,
-						   f: { (v: Void, rs, rj, t) in f(rs, rj, &t) })
+						   f: { (v: Void, rs, rj, t) in try f(rs, rj, &t) }
+				)
 			}
 		}
 	}
@@ -315,9 +322,9 @@ public struct Promise<T> {
 	/// - Returns: A new `Promise`
 	@discardableResult
 	public init(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0,  retry: Int = 0,
-				f: @escaping ( @escaping (T) -> Void,  @escaping (Error) -> Void) -> Void) {
+				f: @escaping ( @escaping (T) -> Void,  @escaping (Error) -> Void) throws -> Void) {
 		self.init(queue, timeout: timeout, retry: retry) { resolve, reject, task in
-			f(resolve, reject)
+			try f(resolve, reject)
 		}
 	}
 	
@@ -467,7 +474,7 @@ public struct Promise<T> {
 	/// - SeeAlso: `Asyncable`
 	@discardableResult
 	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, retry: Int = 0,
-						f: @escaping (T, @escaping (U) -> Void, @escaping (Error) -> Void, inout Asyncable?) -> Void) -> Promise<U> {
+						f: @escaping (T, @escaping (U) -> Void, @escaping (Error) -> Void, inout Asyncable?) throws -> Void) -> Promise<U> {
 		autoRun.cancel()
 		return Promise<U>(monitor) { callback in
 			let p = pending(monitor: monitor, callback: callback)
@@ -509,9 +516,9 @@ public struct Promise<T> {
 	///	- Returns: A new chained promise.
 	@discardableResult
 	public func then<U>(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, retry: Int = 0,
-						f: @escaping (T, @escaping (U) -> Void, @escaping (Error) -> Void) -> Void) -> Promise<U> {
+						f: @escaping (T, @escaping (U) -> Void, @escaping (Error) -> Void) throws -> Void) -> Promise<U> {
 		then(queue, timeout: timeout, retry: retry) { value, resolve, reject, task in
-			f(value, resolve, reject)
+			try f(value, resolve, reject)
 		}
 	}
 	
