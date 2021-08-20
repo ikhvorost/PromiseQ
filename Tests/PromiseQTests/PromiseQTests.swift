@@ -191,23 +191,23 @@ final class PromiseQTests: XCTestCase {
 	
 	func test_RunOnQueues() {
 		wait(count: 5) { expectations in
-			Promise(.main) {
+			Promise<Void>(.main) {
 				XCTAssert(DispatchQueue.current == DispatchQueue.main)
 				expectations[0].fulfill()
 			}
-			.then(.global()) { () -> Void in
+			.then(.global()) { _ in
 				XCTAssert(DispatchQueue.current == DispatchQueue.global())
 				expectations[1].fulfill()
 			}
-			.then(.global(qos: .utility)) { () -> Void in
+			.then(.global(qos: .utility)) { _ in
 				XCTAssert(DispatchQueue.current == DispatchQueue.global(qos: .utility))
 				expectations[2].fulfill()
 			}
-			.then { () -> Void in
+			.then { _ in
 				XCTAssert(DispatchQueue.current == DispatchQueue.global())
 				expectations[3].fulfill()
 			}
-			.then(.global(qos: .background)) {
+			.then(.global(qos: .background)) { _ in
 				XCTAssert(DispatchQueue.current == DispatchQueue.global(qos: .background))
 				expectations[4].fulfill()
 			}
@@ -500,8 +500,22 @@ final class PromiseQTests: XCTestCase {
 					$0 / 2
 				}
 			}
+			.then { (value) -> Promise<Int> in
+				XCTAssert(value == 10)
+				
+				return
+					Promise.resolve(value)
+					.then { value in
+						Promise {
+							value * 2
+						}
+						.then {
+							$0 * 10
+						}
+					}
+			}
 			.then {
-				XCTAssert($0 == 10)
+				XCTAssert($0 == 200)
 				expectation.fulfill()
 			}
 		}
