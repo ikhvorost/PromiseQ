@@ -115,7 +115,7 @@ let url = "https://developer.apple.com/swift/blog/"
 
 final class PromiseQTests: XCTestCase {
 	
-	func testPromise_AutoRun() {
+	func test_AutoRun() {
 		wait(count: 2) { expectations in
 
 			Promise {
@@ -130,7 +130,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_Resolve() {
+	func test_Resolve() {
 		wait { expectation in
 			let promise = Promise.resolve(200)
 			promise.then {
@@ -140,7 +140,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_Reject() {
+	func test_Reject() {
 		wait { expectation in
 			let promise = Promise<Void>.reject("Some error")
 			promise.then {
@@ -153,7 +153,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-    func testPromise_CreateOnMainQueue() {
+    func test_CreateOnMainQueue() {
 		wait { expectation in
 			Promise {
 				XCTAssert(DispatchQueue.current == DispatchQueue.global())
@@ -162,7 +162,7 @@ final class PromiseQTests: XCTestCase {
 		}
     }
 	
-	func testPromise_CreateOnGlobalQueue() {
+	func test_CreateOnGlobalQueue() {
 		wait { expectation in
 			DispatchQueue.global().async {
 				Promise {
@@ -183,13 +183,13 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_CreateOnThread() {
+	func test_CreateOnThread() {
 		wait { expectation in
 			Thread.detachNewThreadSelector(#selector(thread), toTarget: self, with: expectation);
 		}
     }
 	
-	func testPromise_RunOnQueues() {
+	func test_RunOnQueues() {
 		wait(count: 5) { expectations in
 			Promise(.main) {
 				XCTAssert(DispatchQueue.current == DispatchQueue.main)
@@ -214,7 +214,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_ThrowNoCatch() {
+	func test_ThrowNoCatch() {
 		wait { expectation in
 			expectation.isInverted = true
 			
@@ -227,7 +227,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_CatchThen() {
+	func test_CatchThen() {
 		wait { expectation in
 			Promise {
 				return 100
@@ -241,7 +241,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 		
-	func testPromise_ThrowCatch() {
+	func test_ThrowCatch() {
 		wait { expectation in
 			Promise {
 				throw "Error"
@@ -256,7 +256,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_ThrowCatchThen() {
+	func test_ThrowCatchThen() {
 		wait { expectation in
 			Promise {
 				throw "Some Error"
@@ -273,29 +273,36 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_Rethrowing() {
+	func test_Rethrow() {
 		wait { expectation in
 			Promise {
-				throw "Some Error"
+				throw "Error1"
 			}
 			.then {
 				XCTFail()
 			}
 			.catch { error in
-				XCTAssert(error.localizedDescription == "Some Error")
-				throw "Other Error"
+				XCTAssert(error.localizedDescription == "Error1")
+				throw "Error2"
 			}
 			.then {
 				XCTFail()
 			}
 			.catch { error in
-				XCTAssert(error.localizedDescription == "Other Error")
+				XCTAssert(error.localizedDescription == "Error2")
+				throw error
+			}
+			.then {
+				XCTFail()
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Error2")
 				expectation.fulfill()
 			}
 		}
 	}
 	
-	func testPromise_AsyncCatch() {
+	func test_AsyncCatch() {
 		wait { expectation in
 			Promise<Int> { resolve, reject in
 				asyncAfter {
@@ -314,7 +321,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AsyncThrow() {
+	func test_AsyncThrow() {
 		wait(count: 2) { expectations in
 			Promise<Int> { resolve, reject in
 				asyncAfter {
@@ -346,7 +353,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_Then() {
+	func test_Then() {
 		wait { expectation in
 			Promise {
 				return "Hello"
@@ -358,7 +365,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_ThenThrow() {
+	func test_ThenThrow() {
 		wait(count: 3) { expectations in
 			expectations[1].isInverted = true
 			
@@ -380,7 +387,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AsyncThen() {
+	func test_AsyncThen() {
 		wait { expectation in
 			Promise<String> { resolve, reject in
 				asyncAfter {
@@ -399,7 +406,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AsyncThenAsyncThen() {
+	func test_AsyncThenAsyncThen() {
 		wait { expectation in
 			Promise<String> { resolve, reject in
 				asyncAfter {
@@ -421,7 +428,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_ThenReject() {
+	func test_ThenReject() {
 		wait { expectation in
 			expectation.isInverted = true
 			
@@ -439,7 +446,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_FinallyThen() {
+	func test_FinallyThen() {
 		wait(count: 3) { expectations in
 			Promise {
 				return 200
@@ -457,7 +464,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_FinallyCatch() {
+	func test_FinallyCatch() {
 		wait(count: 3) { expectations in
 			Promise<Int> { resolve, reject in
 				asyncAfter {
@@ -482,35 +489,34 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 
-	func testPromise_ThenPromise() {
+	func test_ThenPromise() {
 		wait { expectation in
-			Promise {
-				return 200
-			}
+			Promise.resolve(200)
 			.then { value in
-				Promise.resolve(value / 10)
+				Promise {
+					value / 10
+				}
+				.then {
+					$0 / 2
+				}
 			}
 			.then {
-				XCTAssert($0 == 20)
+				XCTAssert($0 == 10)
 				expectation.fulfill()
 			}
 		}
 	}
 	
-	func testPromise_ThenPromiseThrow() {
+	func test_ThenPromiseThrow() {
 		wait(count:2) { expectations in
 			expectations[0].isInverted = true
 			
 			Promise.resolve(200)
 			.then { (value) -> Promise<Int> in
-				if value == 200 {
-					throw "Error"
-				}
-				return Promise.resolve(value / 10)
+				Promise.reject("Error")
 			}
-			.then { (value) -> Promise<Int> in
+			.then { promise in
 				expectations[0].fulfill() // Must be skipped
-				return Promise.resolve(value)
 			}
 			.catch { error in
 				XCTAssert(error.localizedDescription == "Error")
@@ -519,7 +525,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_ThenPromiseReject() {
+	func test_ThenPromiseSyncReject() {
 		wait(count:2) { expectations in
 			expectations[0].isInverted = true
 			
@@ -531,6 +537,10 @@ final class PromiseQTests: XCTestCase {
 					}
 					return value / 10
 				}
+				.catch { error in
+					XCTAssert(error.localizedDescription == "Error")
+					throw error
+				}
 			}
 			.then { value in
 				expectations[0].fulfill() // Must be skipped
@@ -542,7 +552,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_ThenAsyncPromise() {
+	func test_ThenPromiseAsync() {
 		wait { expectation in
 			Promise.resolve(200)
 			.then { value in
@@ -551,15 +561,40 @@ final class PromiseQTests: XCTestCase {
 						resolve(value / 10)
 					}
 				}
+				.then {
+					$0 / 2
+				}
 			}
 			.then {
-				XCTAssert($0 == 20)
+				XCTAssert($0 == 10)
 				expectation.fulfill()
 			}
 		}
 	}
 	
-	func testPromise_TimeOutSync() {
+	func test_ThenPromiseAsyncReject() {
+		wait(count: 2) { expectations in
+			expectations[0].isInverted = true
+			
+			Promise.resolve(200)
+			.then { value in
+				Promise { resolve, reject in
+					asyncAfter {
+						reject("Error")
+					}
+				}
+			}
+			.then {
+				expectations[0].fulfill() // Skip
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Error")
+				expectations[1].fulfill()
+			}
+		}
+	}
+	
+	func test_TimeOutSync() {
 		wait(count: 4) { expectations in
 			Promise(timeout: 0.1) {
 				Thread.sleep(forTimeInterval: 0.3)
@@ -608,7 +643,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_TimeOutAsync() {
+	func test_TimeOutAsync() {
 		wait(count: 2) { expectations in
 			Promise(timeout: 0.1) { resolve, reject in
 				asyncAfter {
@@ -639,7 +674,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_RetrySync() {
+	func test_RetrySync() {
 		wait { expectation in
 			var count = 2
 			Promise<String>(retry: 2) {
@@ -700,7 +735,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_RetryAsync() {
+	func test_RetryAsync() {
 		wait { expectation in
 			var count = 2
 			Promise<String>(retry: 2) { resolve, reject in
@@ -730,7 +765,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_All() {
+	func test_All() {
 		wait { expectation in
 			Promise.all(
 				Promise { resolve, reject in
@@ -753,7 +788,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AllCancel() {
+	func test_AllCancel() {
 		wait(count:2) { expectations in
 			expectations[0].isInverted = true
 			
@@ -784,7 +819,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AllEmpty() {
+	func test_AllEmpty() {
 		wait { expectation in
 			let promises = [Promise<Int>]()
 			
@@ -799,7 +834,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AllAny() {
+	func test_AllAny() {
 		wait { expectation in
 			Promise<Any>.all(
 				Promise { resolve, reject in
@@ -818,7 +853,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AllCatch() {
+	func test_AllCatch() {
 		wait { expectation in
 			Promise.all(
 				Promise { resolve, reject in
@@ -838,7 +873,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AllSettled() {
+	func test_AllSettled() {
 		wait { expectation in
 			Promise<Any>.all(settled: true,
 				Promise { resolve, reject in
@@ -866,7 +901,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AllSuppendResume() {
+	func test_AllSuppendResume() {
 		wait { expectation in
 			let promise = Promise.all(
 				Promise { resolve, reject in
@@ -889,7 +924,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_RaceEmpty() {
+	func test_RaceEmpty() {
 		wait { expectation in
 			let promises = [Promise<Any>]()
 			
@@ -906,7 +941,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_RaceCancel() {
+	func test_RaceCancel() {
 		wait(count: 2) { expectations in
 			expectations[0].isInverted = true
 			
@@ -937,7 +972,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_RaceThen() {
+	func test_RaceThen() {
 		wait { expectation in
 			Promise<Any>.race(
 				Promise { resolve, reject in
@@ -966,7 +1001,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_RaceCatch() {
+	func test_RaceCatch() {
 		wait { expectation in
 			Promise.race(
 				Promise { resolve, reject in
@@ -990,7 +1025,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AnyEmpty() {
+	func test_AnyEmpty() {
 		wait { expectation in
 			let promises = [Promise<Any>]()
 			
@@ -1007,7 +1042,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_Any() {
+	func test_Any() {
 		wait { expectation in
 			Promise<Any>.any(
 				Promise {
@@ -1038,7 +1073,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AnyCancel() {
+	func test_AnyCancel() {
 		wait(count: 2) { expectations in
 			expectations[0].isInverted = true
 			
@@ -1069,7 +1104,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AnyReject() {
+	func test_AnyReject() {
 		wait { expectation in
 			let promise = Promise<Any> { resolve, reject in
 				asyncAfter { resolve(200) }
@@ -1098,7 +1133,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_Cancel() {
+	func test_Cancel() {
 		wait(count: 4) { expectations in
 			let p = Promise {
 				XCTFail()
@@ -1133,7 +1168,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_CancelDouble() {
+	func test_CancelDouble() {
 		wait { expectation in
 			let p = Promise {
 				XCTFail()
@@ -1152,7 +1187,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_CancelInside() {
+	func test_CancelInside() {
 		wait(count: 2) { expectations in
 			let p = Promise {
 				expectations[0].fulfill()
@@ -1171,7 +1206,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_CancelAsync() {
+	func test_CancelAsync() {
 		wait(count: 3) { expectations in
 		
 			let p = Promise { resolve, reject in
@@ -1208,7 +1243,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_CancelTimeout() {
+	func test_CancelTimeout() {
 		wait { expectation in
 			
 			let p = Promise(timeout: 10) { resolve, reject in
@@ -1228,7 +1263,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_Suspend() {
+	func test_Suspend() {
 		wait { expectation in
 			expectation.isInverted = true
 		
@@ -1243,7 +1278,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_SuspendInside() {
+	func test_SuspendInside() {
 		wait { expectation in
 			expectation.isInverted = true
 			
@@ -1261,7 +1296,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_SuspendResume() {
+	func test_SuspendResume() {
 		wait { expectation in
 			var str = ""
 			
@@ -1295,7 +1330,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_SuspendCancelResume() {
+	func test_SuspendCancelResume() {
 		wait { expectation in
 			expectation.isInverted = true
 			
@@ -1319,7 +1354,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AsyncableSuspendResume() {
+	func test_AsyncableSuspendResume() {
 		wait(timeout: 10) { expectation in
 			let p = fetch(url)
 			p.then { (data, resolve: @escaping (String)->Void, reject, task) in
@@ -1352,7 +1387,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AsyncableCancel() {
+	func test_AsyncableCancel() {
 		wait(timeout: 2) { expectation in
 			expectation.isInverted = true
 			
@@ -1371,7 +1406,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AsyncableAll() {
+	func test_AsyncableAll() {
 		wait(timeout: 10) { expectation in
 			let p = Promise.all (
 				fetch(url),
@@ -1395,7 +1430,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_Async() {
+	func test_Async() {
 		wait { expectation in
 			async {
 				expectation.fulfill()
@@ -1403,7 +1438,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_DoAwait() {
+	func test_DoAwait() {
 		wait { expectation in
 			do {
 				let text = try Promise { resolve, reject in
@@ -1420,7 +1455,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AsyncAwait() {
+	func test_AsyncAwait() {
 		wait { expectation in
 			async {
 				let text = try async { resolve, reject in
@@ -1435,7 +1470,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AsyncAwaitThrow() {
+	func test_AsyncAwaitThrow() {
 		wait(count: 2) { expectations in
 			expectations[0].isInverted = true
 			
@@ -1453,7 +1488,7 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_AsyncAwaitCancel() {
+	func test_AsyncAwaitCancel() {
 		wait(count: 2) { expectations in
 			expectations[0].isInverted = true
 			
@@ -1489,7 +1524,7 @@ final class FetchTests: XCTestCase {
 		let url: String
 	}
 	
-	func testPromise_badURL() {
+	func test_badURL() {
 		wait(count: 2) { expectations in
 			Promise.any(
 				fetch(""),
@@ -1531,7 +1566,7 @@ final class FetchTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_get_404() {
+	func test_get_404() {
 		wait { expectation in
 			let path = "https://postman-echo.com/notfound"
 			fetch(path)
@@ -1549,7 +1584,7 @@ final class FetchTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_get() {
+	func test_get() {
 		wait { expectation in
 			let path = "https://postman-echo.com/get"
 			fetch(path)
@@ -1585,7 +1620,7 @@ final class FetchTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_head() {
+	func test_head() {
 		wait(timeout: 2) { expectation in
 			let path = "https://google.com"
 			fetch(path, method: .HEAD)
@@ -1608,7 +1643,7 @@ final class FetchTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_post() {
+	func test_post() {
 		wait { expectation in
 			let path = "https://postman-echo.com/post"
 			let text = "hello"
@@ -1634,7 +1669,7 @@ final class FetchTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_put() {
+	func test_put() {
 		wait { expectation in
 			let path = "https://postman-echo.com/put"
 			let text = "hello"
@@ -1660,7 +1695,7 @@ final class FetchTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_patch() {
+	func test_patch() {
 		wait { expectation in
 			let path = "https://postman-echo.com/patch"
 			let text = "hello"
@@ -1686,7 +1721,7 @@ final class FetchTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_delete() {
+	func test_delete() {
 		wait { expectation in
 			let path = "https://postman-echo.com/delete"
 			let text = "hello"
@@ -1712,7 +1747,7 @@ final class FetchTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_fetchSuspend() {
+	func test_fetchSuspend() {
 		wait (timeout: 2){ expectation in
 			expectation.isInverted = true
 			
@@ -1730,7 +1765,7 @@ final class FetchTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_fetchSuspendResume() {
+	func test_fetchSuspendResume() {
 		wait(timeout: 3) { expectation in
 			
 			let promise = fetch("https://google.com")
@@ -1751,7 +1786,7 @@ final class FetchTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_fetchCancel() {
+	func test_fetchCancel() {
 		wait (timeout: 2){ expectation in
 			
 			let promise = fetch("https://google.com")
@@ -1770,7 +1805,7 @@ final class FetchTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_fetchSuspendCancelResume() {
+	func test_fetchSuspendCancelResume() {
 		wait(count:2) { expectations in
 			expectations[0].isInverted = true
 			
@@ -1798,7 +1833,7 @@ final class FetchTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_download() {
+	func test_download() {
 		wait(count:3, timeout: 3) { expectations in
 			expectations[2].isInverted = true
 			
@@ -1839,7 +1874,7 @@ final class FetchTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_downloadCancel() {
+	func test_downloadCancel() {
 		wait(timeout: 3) { expectation in
 			
 			let promise = download("http://speedtest.tele2.net/1MB.zip") { task, written, total  in
@@ -1867,7 +1902,7 @@ final class FetchTests: XCTestCase {
 	let uploadURL = "http://speedtest.lantrace.net:8080/speedtest/upload.php"
 	//let uploadURL = "http://speedtest.tele2.net/upload.php"
 	
-	func testPromise_uploadData() {
+	func test_uploadData() {
 		wait(count:2, timeout: 3) { expectations in
 			let data = Data(Array(repeating: UInt8(0), count: 1024 * 1024)) // 1MB
 			upload(uploadURL, data: data) { task, sent, total in
@@ -1890,7 +1925,7 @@ final class FetchTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_uploadFile() {
+	func test_uploadFile() {
 		wait(count:3, timeout: 3) { expectations in
 			let url = URL(fileURLWithPath: NSTemporaryDirectory() + "upload.tmp")
 			
@@ -1928,7 +1963,7 @@ final class FetchTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_uploadCancel() {
+	func test_uploadCancel() {
 		wait(timeout: 3) { expectation in
 			let data = Data(Array(repeating: UInt8(0), count: 1024 * 1024)) // 1MB
 			let promise = upload(uploadURL, data: data) { task, written, total  in
@@ -1955,7 +1990,7 @@ final class FetchTests: XCTestCase {
 
 final class LeakTests: XCTestCase {
 
-	func testPromise_Leak() {
+	func test_Leak() {
 		wait(timeout: 1) { expectation in
 			let promise = Promise { return 200 }
 			.then { _ in }
@@ -1973,7 +2008,7 @@ final class LeakTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_LeakAll() {
+	func test_LeakAll() {
 		wait(count: 3) { expectations in
 			
 			let promise1 = Promise { return 200 }
@@ -1999,7 +2034,7 @@ final class LeakTests: XCTestCase {
 final class SampleTests: XCTestCase {
 	
 	/// Load avatars of first 30 GitHub users
-	func testPromise_SampleThen() {
+	func test_SampleThen() {
 		wait(timeout: 4) { expectation in
 			fetch("https://api.github.com/users", headers: GitHubHeaders, retry: 3)
 			.then { response -> [User] in
@@ -2016,8 +2051,7 @@ final class SampleTests: XCTestCase {
 			.then { users -> Promise<Array<HTTPResponse>> in
 				return Promise.all(
 					users
-					.map { $0.avatar_url }
-					.map { fetch($0) }
+					.map { fetch($0.avatar_url) }
 				)
 			}
 			.then { responses in
@@ -2036,7 +2070,7 @@ final class SampleTests: XCTestCase {
 		}
 	}
 	
-	func testPromise_SampleAwait() {
+	func test_SampleAwait() {
 		wait(timeout: 4) { expectation in
 			async {
 				let response = try fetch("https://api.github.com/users", headers: GitHubHeaders, retry: 3).await()
@@ -2053,8 +2087,7 @@ final class SampleTests: XCTestCase {
 				let images =
 					try async.all(
 						users
-						.map { $0.avatar_url }
-						.map { fetch($0) }
+						.map { fetch($0.avatar_url) }
 					).await()
 					.compactMap { $0.data }
 					.compactMap { UIImage(data: $0) }
