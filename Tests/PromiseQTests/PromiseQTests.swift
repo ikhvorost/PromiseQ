@@ -113,7 +113,7 @@ var GitHubHeaders: [String : String]? = {
 // Url with large data to fetch
 let url = "https://developer.apple.com/swift/blog/"
 
-final class PromiseQTests: XCTestCase {
+final class CommonTests: XCTestCase {
 	
 	func test_AutoRun() {
 		wait(count: 2) { expectations in
@@ -191,7 +191,7 @@ final class PromiseQTests: XCTestCase {
 	
 	func test_RunOnQueues() {
 		wait(count: 5) { expectations in
-			Promise<Void>(.main) {
+			Promise (.main) {
 				XCTAssert(DispatchQueue.current == DispatchQueue.main)
 				expectations[0].fulfill()
 			}
@@ -218,7 +218,7 @@ final class PromiseQTests: XCTestCase {
 		wait { expectation in
 			expectation.isInverted = true
 			
-			Promise {
+			Promise { () -> Void in
 				throw "Some Error"
 			}
 			.then {
@@ -243,7 +243,7 @@ final class PromiseQTests: XCTestCase {
 		
 	func test_ThrowCatch() {
 		wait { expectation in
-			Promise {
+			Promise { () -> Void in
 				throw "Error"
 			}
 			.then {
@@ -258,7 +258,7 @@ final class PromiseQTests: XCTestCase {
 	
 	func test_ThrowCatchThen() {
 		wait { expectation in
-			Promise {
+			Promise {  () -> Void in
 				throw "Some Error"
 			}
 			.then {
@@ -275,7 +275,7 @@ final class PromiseQTests: XCTestCase {
 	
 	func test_Rethrow() {
 		wait { expectation in
-			Promise {
+			Promise {  () -> Void in
 				throw "Error1"
 			}
 			.then {
@@ -488,19 +488,28 @@ final class PromiseQTests: XCTestCase {
 			}
 		}
 	}
+	
 
-	func test_ThenPromise() {
+	func test_Promise() {
 		wait { expectation in
-			Promise.resolve(200)
+			
+			Promise<Int> { () -> Promise<Int> in
+				let status = 200
+				return Promise {
+					Promise.resolve(status)
+				}
+			}
 			.then { value in
-				Promise {
+				XCTAssert(value == 200)
+				
+				return Promise {
 					value / 10
 				}
 				.then {
 					$0 / 2
 				}
 			}
-			.then { (value) -> Promise<Int> in
+			.then { (value: Int) -> Promise<Int> in
 				XCTAssert(value == 10)
 				
 				return
@@ -521,20 +530,31 @@ final class PromiseQTests: XCTestCase {
 		}
 	}
 	
-	func test_ThenPromiseThrow() {
-		wait(count:2) { expectations in
+	func test_PromiseThrow() {
+		wait(count:3) { expectations in
 			expectations[0].isInverted = true
 			
-			Promise.resolve(200)
+			Promise {
+				Promise { () -> Void in
+					throw "Error"
+				}
+			}
+			.then {
+				expectations[0].fulfill() // Must be skipped
+			}
+			.catch { error in
+				XCTAssert(error.localizedDescription == "Error")
+			}
 			.then { (value) -> Promise<Int> in
-				Promise.reject("Error")
+				expectations[1].fulfill() // Must be skipped
+				return Promise.reject("Error")
 			}
 			.then { promise in
 				expectations[0].fulfill() // Must be skipped
 			}
 			.catch { error in
 				XCTAssert(error.localizedDescription == "Error")
-				expectations[1].fulfill()
+				expectations[2].fulfill()
 			}
 		}
 	}
@@ -545,7 +565,7 @@ final class PromiseQTests: XCTestCase {
 			
 			Promise.resolve(200)
 			.then { value in
-				Promise<Int> {
+				Promise { () -> Int in
 					if value == 200 {
 						throw "Error"
 					}
@@ -691,7 +711,7 @@ final class PromiseQTests: XCTestCase {
 	func test_RetrySync() {
 		wait { expectation in
 			var count = 2
-			Promise<String>(retry: 2) {
+			Promise(retry: 2) { () -> String in
 				if count > 0 {
 					count -= 1
 					throw "fail"
@@ -720,7 +740,7 @@ final class PromiseQTests: XCTestCase {
 			.then { value -> Promise<String> in
 				XCTAssert(value == "done3")
 				
-				return Promise<String>(retry: 2) {
+				return Promise(retry: 2) { () -> String in
 					if count < 2 {
 						count += 1
 						throw "fail"

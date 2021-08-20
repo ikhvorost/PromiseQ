@@ -247,6 +247,56 @@ public struct Promise<T> {
 			}
 		}
 	}
+	
+	/// Initialize a new promise that can be resolved or rejected with the closure which returns an other promise.
+	///
+	/// When new promise is created, the closure runs automatically.
+	///
+	/// 	Promise {
+	/// 		let status = 200
+	/// 		return Promise {
+	/// 			return status
+	/// 		}
+	/// 	}
+	/// 	.then {
+	/// 		print($0) // Prints: 200
+	/// 	}
+	///
+	/// - Parameters:
+	///		- queue: The queue at which the closure should be executed. Defaults to `DispatchQueue.global()`.
+	///		- timeout: The time interval to wait for resolving the promise.
+	///		- retry: The max number of retry attempts to resolve the promise after rejection.
+	///		- f: The closure to be invoked on the queue that can return a promise or throw an error.
+	/// - Returns: A new `Promise`
+	/// - SeeAlso: `Promise.resolve()`, `Promise.reject()`
+	public init(_ queue: DispatchQueue = .global(), timeout: TimeInterval = 0, retry: Int = 0, f: @escaping (() throws -> Promise<T>)) {
+		let monitor = Monitor()
+		self.init(monitor) { callback in
+			let p = pending(monitor: monitor, callback: callback)
+			setTimeout(timeout: timeout, pending: p)
+			execute(queue) {
+				monitor.reject = { p(.failure(PromiseError.cancelled)) }
+				retrySync(retry, monitor: monitor,
+					do: {
+						let promise = try f()
+						promise.autoRun.cancel()
+						promise.f { result in
+							switch result {
+								case let .success(value):
+									p(.success(value))
+
+								case let .failure(error):
+									p(.failure(error))
+							}
+						}
+					},
+					catch: { error in
+						p(.failure(error))
+					}
+				)
+			}
+		}
+	}
 
 	/// Initialize a new promise that can be resolved or rejected with the callbacks and can manage a wrapped asynchronous task.
 	///
@@ -390,8 +440,7 @@ public struct Promise<T> {
 	///			}
 	///		}
 	///		.then {
-	///			XCTAssert($0 == 20)
-	///			exp.fulfill()
+	///			print($0) // Prints: 20
 	///		}
 	///
 	///	- Parameters:
@@ -829,7 +878,7 @@ public struct Promise<T> {
 	///	- Parameter promises: An array of promises to execute.
 	///	- Returns: A new single promise.
 	/// - SeeAlso: `Promise.all()`
-	public static func race(_ promises:[Promise<T>]) -> Promise<T> {
+	public static func race(_ promises: [Promise<T>]) -> Promise<T> {
 		promises.forEach { $0.autoRun.cancel() }
 		let container = AsyncContainer(tasks: promises.map(\.monitor))
 		return Promise { resolve, reject, task in
@@ -855,7 +904,7 @@ public struct Promise<T> {
 	/// 	Promise.race([Promise<T>]) -> Promise<T>
 	///
 	/// - SeeAlso: Promise.race([Promise<T>]) -> Promise<T>
-	public static func race(_ promises:Promise<T>...) -> Promise<T> {
+	public static func race(_ promises: Promise<T>...) -> Promise<T> {
 		return race(promises)
 	}
 	
@@ -899,7 +948,7 @@ public struct Promise<T> {
 	///	- Parameter promises: An array of promises to execute.
 	///	- Returns: A new single promise.
 	/// - SeeAlso: `Promise.race()`
-	public static func any(_ promises:[Promise<T>]) -> Promise<T> {
+	public static func any(_ promises: [Promise<T>]) -> Promise<T> {
 		var errors = [Int : Error]()
 		let mutex = DispatchSemaphore.Mutex()
 		promises.forEach { $0.autoRun.cancel() }
