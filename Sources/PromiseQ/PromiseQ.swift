@@ -35,13 +35,14 @@ private func setTimeout<T>(timeout: TimeInterval, pending: @escaping (Result<T, 
 
 private func pending<T>(monitor: Monitor, callback: @escaping (Result<T, Error>) -> Void) -> (Result<T, Error>) -> Void {
 	var p = true
+	let obj = NSObject()
 	return { [weak monitor] (result: Result<T, Error>) -> Void in
-		if monitor != nil {
-			synchronized(monitor!) {
-				guard p else { return }
-				p.toggle()
-				callback(result)
-			}
+		guard monitor != nil else { return }
+		synchronized(obj) {
+			guard p else { return }
+			p.toggle()
+			
+			callback(result)
 		}
 	}
 }
@@ -134,6 +135,11 @@ private func retryAsync<T, U>(_ count: Int,
 ///
 /// - SeeAlso: `Promise.await()`.
 public typealias async = Promise
+
+@discardableResult
+public func await<T>(_ closure: () -> Promise<T>) throws -> T {
+	try closure().await()
+}
 
 /// Promise errors
 public enum PromiseError: Error, LocalizedError {
@@ -232,8 +238,8 @@ public struct Promise<T> {
 		let monitor = Monitor()
 		self.init(monitor) { callback in
 			let p = pending(monitor: monitor, callback: callback)
-			setTimeout(timeout: timeout, pending: p)
 			execute(queue) {
+				setTimeout(timeout: timeout, pending: p)
 				monitor.reject = { p(.failure(PromiseError.cancelled)) }
 				retrySync(retry, monitor: monitor,
 					do: {
@@ -273,8 +279,8 @@ public struct Promise<T> {
 		let monitor = Monitor()
 		self.init(monitor) { callback in
 			let p = pending(monitor: monitor, callback: callback)
-			setTimeout(timeout: timeout, pending: p)
 			execute(queue) {
+				setTimeout(timeout: timeout, pending: p)
 				monitor.reject = { p(.failure(PromiseError.cancelled)) }
 				retrySync(retry, monitor: monitor,
 					do: {
@@ -330,8 +336,8 @@ public struct Promise<T> {
 		let monitor = Monitor()
 		self.init(monitor) { callback in
 			let p = pending(monitor: monitor, callback: callback)
-			setTimeout(timeout: timeout, pending: p)
 			execute(queue) {
+				setTimeout(timeout: timeout, pending: p)
 				monitor.reject = { p(.failure(PromiseError.cancelled)) }
 				retryAsync(retry,
 						   monitor: monitor,
@@ -404,8 +410,8 @@ public struct Promise<T> {
 		autoRun.cancel()
 		return Promise<U>(monitor) { callback in
 			let p = pending(monitor: monitor, callback: callback)
-			setTimeout(timeout: timeout, pending: p)
 			self.f { result in
+				setTimeout(timeout: timeout, pending: p)
 				monitor.reject = { p(.failure(PromiseError.cancelled)) }
 				switch result {
 					case let .success(input):
@@ -454,8 +460,8 @@ public struct Promise<T> {
 		autoRun.cancel()
 		return Promise<U>(monitor) { callback in
 			let p = pending(monitor: monitor, callback: callback)
-			setTimeout(timeout: timeout, pending: p)
 			self.f { result in
+				setTimeout(timeout: timeout, pending: p)
 				monitor.reject = { p(.failure(PromiseError.cancelled)) }
 				switch result {
 					case let .success(value):
@@ -527,8 +533,8 @@ public struct Promise<T> {
 		autoRun.cancel()
 		return Promise<U>(monitor) { callback in
 			let p = pending(monitor: monitor, callback: callback)
-			setTimeout(timeout: timeout, pending: p)
 			self.f { result in
+				setTimeout(timeout: timeout, pending: p)
 				monitor.reject = { p(.failure(PromiseError.cancelled)) }
 				switch result {
 					case let .success(value):
@@ -594,8 +600,8 @@ public struct Promise<T> {
 		autoRun.cancel()
 		return Promise<Void>(monitor) { callback in
 			let p = pending(monitor: monitor, callback: callback)
-			setTimeout(timeout: timeout, pending: p)
 			self.f { result in
+				setTimeout(timeout: timeout, pending: p)
 				monitor.reject = { p(.failure(PromiseError.cancelled)) }
 				switch result {
 					case .success:

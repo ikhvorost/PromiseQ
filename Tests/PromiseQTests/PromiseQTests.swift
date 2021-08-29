@@ -27,12 +27,18 @@ extension DispatchQueue {
 
 extension XCTestCase {
 	
-	func wait(count: Int, timeout: TimeInterval = 1, name: String = #function, closure: ([XCTestExpectation]) -> Void) {
-		let expectations = (0..<count).map { _ in expectation(description: name) }
+	func wait(count: UInt, timeout: TimeInterval = 1, repeat r: UInt = 1, name: String = #function, closure: ([XCTestExpectation]) -> Void) {
+		guard count > 0, r > 0 else { return }
 		
-		closure(expectations)
+		let exps = (0..<r * count).map { _ in expectation(description: name) }
 		
-		wait(for: expectations, timeout: timeout)
+		for i in 0..<r {
+			let start = Int(i * count)
+			let end = start + Int(count) - 1
+			closure(Array(exps[start...end]))
+		}
+		
+		wait(for: exps, timeout: timeout)
 	}
 	
 	func wait(timeout: TimeInterval = 1, name: String = #function, closure: (XCTestExpectation) -> Void) {
@@ -628,9 +634,27 @@ final class CommonTests: XCTestCase {
 		}
 	}
 	
-	func test_TimeOutSync() {
-		wait(count: 4) { expectations in
-			Promise(timeout: 0.1) {
+	func test_Timeout() {
+		wait(count: 2) { expectations in
+			Promise { resolve, reject in
+				asyncAfter { resolve(200) }
+			}
+			.then(timeout: 0.11) { value -> Void in
+				XCTAssert(value == 200)
+				expectations[0].fulfill()
+			}
+			.then(timeout: 0.12) {
+				expectations[1].fulfill()
+			}
+			.catch { error in
+				XCTFail()
+			}
+		}
+	}
+	
+	func test_TimeoutSync() {
+		wait(count: 4, repeat: 3) { expectations in
+			Promise(timeout: 0.11) {
 				Thread.sleep(forTimeInterval: 0.3)
 			}
 			.then {
@@ -641,8 +665,8 @@ final class CommonTests: XCTestCase {
 					expectations[0].fulfill()
 				}
 			}
-			.then(timeout: 0.1) {
-				Thread.sleep(forTimeInterval: 0.3)
+			.then(timeout: 0.12) { () -> Void in
+				Thread.sleep(forTimeInterval: 0.5)
 			}
 			.then {
 				XCTFail()
@@ -652,7 +676,7 @@ final class CommonTests: XCTestCase {
 					expectations[1].fulfill()
 				}
 			}
-			.then(timeout: 0.1) { _, resolve, reject in
+			.then(timeout: 0.13) { _, resolve, reject in
 				asyncAfter {
 					resolve(())
 				}
@@ -660,7 +684,7 @@ final class CommonTests: XCTestCase {
 			.then { value in
 				XCTFail()
 			}
-			.catch(timeout: 0.1) { error in
+			.catch(timeout: 0.14) { error in
 				if case PromiseError.timedOut = error {
 					expectations[2].fulfill()
 				}
@@ -677,9 +701,9 @@ final class CommonTests: XCTestCase {
 		}
 	}
 	
-	func test_TimeOutAsync() {
-		wait(count: 2) { expectations in
-			Promise(timeout: 0.1) { resolve, reject in
+	func test_TimeoutAsync() {
+		wait(count: 2, repeat: 3) { exps in
+			Promise(timeout: 0.11) { resolve, reject in
 				asyncAfter {
 					resolve(200)
 				}
@@ -689,10 +713,10 @@ final class CommonTests: XCTestCase {
 			}
 			.catch { error in
 				if case PromiseError.timedOut = error {
-					expectations[0].fulfill()
+					exps[0].fulfill()
 				}
 			}
-			.then(timeout: 0.1) { _, resolve, reject in
+			.then(timeout: 0.12) { _, resolve, reject in
 				asyncAfter {
 					resolve(200)
 				}
@@ -702,8 +726,27 @@ final class CommonTests: XCTestCase {
 			}
 			.catch { error in
 				if case PromiseError.timedOut = error {
-					expectations[1].fulfill()
+					exps[1].fulfill()
 				}
+			}
+		}
+	}
+	
+	func test_TimeoutSuspend() {
+		wait { expectation in
+			let promise = Promise(timeout: 0.2) { resolve, reject in
+				asyncAfter {
+					resolve(200)
+				}
+			}
+			.catch { error in
+				if case PromiseError.timedOut = error {
+					expectation.fulfill()
+				}
+			}
+			
+			asyncAfter(0.1) {
+				promise.suspend()
 			}
 		}
 	}
@@ -1280,7 +1323,7 @@ final class CommonTests: XCTestCase {
 	func test_CancelTimeout() {
 		wait { expectation in
 			
-			let p = Promise(timeout: 10) { resolve, reject in
+			let p = Promise(timeout: 0.5) { resolve, reject in
 			}
 			.then {
 				XCTFail()
@@ -1288,6 +1331,9 @@ final class CommonTests: XCTestCase {
 			.catch { error in
 				if case PromiseError.cancelled = error {
 					expectation.fulfill()
+				}
+				else {
+					XCTFail()
 				}
 			}
 			
@@ -1368,9 +1414,7 @@ final class CommonTests: XCTestCase {
 		wait { expectation in
 			expectation.isInverted = true
 			
-			let p = Promise {
-				return 200
-			}
+			let p = Promise.resolve(200)
 			.then {
 				XCTAssert($0 == 200)
 				expectation.fulfill()
@@ -1464,60 +1508,34 @@ final class CommonTests: XCTestCase {
 		}
 	}
 	
-	func test_Async() {
-		wait { expectation in
-			async {
-				expectation.fulfill()
-			}
-		}
-	}
-	
-	func test_DoAwait() {
-		wait { expectation in
-			do {
-				let text = try Promise { resolve, reject in
-					asyncAfter {
-						resolve("Hello")
-					}
-				}.await()
-				
-				XCTAssert(text == "Hello")
-				expectation.fulfill()
-			}
-			catch {
-			}
-		}
-	}
-	
 	func test_AsyncAwait() {
 		wait { expectation in
 			async {
-				let text = try async { resolve, reject in
-					asyncAfter {
-						resolve("Hello")
-					}
-				}.await()
+				var status = try Promise.resolve(200).await()
+				XCTAssert(status == 200)
 				
+				status = try `await` { Promise.resolve(200) }
+				XCTAssert(status == 200)
+				
+				var text = try Promise { resolve, reject in
+					asyncAfter { resolve("Hello") }
+				}.await()
 				XCTAssert(text == "Hello")
-				expectation.fulfill()
-			}
-		}
-	}
-	
-	func test_AsyncAwaitThrow() {
-		wait(count: 2) { expectations in
-			expectations[0].isInverted = true
-			
-			async {
-				try async<Void> { resolve, reject in
-					reject("Error")
-				}.await()
 				
-				expectations[0].fulfill() // Must be skipped
+				text = try `await` {
+					Promise { resolve, reject in
+						asyncAfter { resolve("Hello") }
+					}
+				}
+				XCTAssert(text == "Hello")
+				
+				try Promise<Void>.reject("Error").await()
+				
+				XCTFail()
 			}
 			.catch { error in
 				XCTAssert(error.localizedDescription == "Error")
-				expectations[1].fulfill()
+				expectation.fulfill()
 			}
 		}
 	}
@@ -2025,7 +2043,7 @@ final class FetchTests: XCTestCase {
 final class LeakTests: XCTestCase {
 
 	func test_Leak() {
-		wait(timeout: 1) { expectation in
+		wait { expectation in
 			let promise = Promise { return 200 }
 			.then { _ in }
 			.then { (_, resolve: @escaping (Int) -> Void, reject) in
@@ -2107,7 +2125,9 @@ final class SampleTests: XCTestCase {
 	func test_SampleAwait() {
 		wait(timeout: 4) { expectation in
 			async {
-				let response = try fetch("https://api.github.com/users", headers: GitHubHeaders, retry: 3).await()
+				let response = try `await` {
+					fetch("https://api.github.com/users", headers: GitHubHeaders, retry: 3)
+				}
 				guard response.ok else {
 					throw response.statusCodeDescription
 				}
@@ -2118,13 +2138,13 @@ final class SampleTests: XCTestCase {
 				
 				let users = try JSONDecoder().decode([User].self, from: data)
 				
-				let images =
-					try async.all(
-						users
-						.map { fetch($0.avatar_url) }
-					).await()
-					.compactMap { $0.data }
-					.compactMap { UIImage(data: $0) }
+				let images = try `await` {
+					Promise.all(
+						users.map { fetch($0.avatar_url) }
+					)
+				}
+				.compactMap { $0.data }
+				.compactMap { UIImage(data: $0) }
 				
 				async(.main) {
 					XCTAssert(DispatchQueue.current == DispatchQueue.main)
