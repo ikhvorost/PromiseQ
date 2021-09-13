@@ -731,6 +731,12 @@ public struct Promise<T> {
 		return result!
 	}
 	
+	public var isCancelled: Bool {
+		get {
+			monitor.cancelled
+		}
+	}
+	
 	/// Creates a resolved promise with a given value.
 	///
 	/// The method is used for compatibility, when a function is expected to return the promise.

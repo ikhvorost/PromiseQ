@@ -62,7 +62,7 @@ class Atomic<T> {
 }
 
 class Monitor : Asyncable {
-	@Atomic private var cancelled = false
+	@Atomic private(set) var cancelled = false
 	@Atomic var reject: (() -> Void)? {
 		didSet {
 			if self.cancelled {

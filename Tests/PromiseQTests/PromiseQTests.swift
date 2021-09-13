@@ -1269,6 +1269,7 @@ final class CommonTests: XCTestCase {
 			let p = Promise {
 				expectations[0].fulfill()
 			}
+			
 			p.then {
 				p.cancel()
 			}
@@ -1284,37 +1285,29 @@ final class CommonTests: XCTestCase {
 	}
 	
 	func test_CancelAsync() {
-		wait(count: 3) { expectations in
+		wait(count: 2) { exps in
 		
-			let p = Promise { resolve, reject in
-				asyncAfter {
-					resolve(200)
-				}
-			}
-			.then { value, resolve, reject in
-				XCTAssert(value == 200)
-				expectations[0].fulfill()
+			let p = Promise.resolve(200)
+			
+			p.then {
+				XCTAssert($0 == 200)
 				
-				asyncAfter {
-					resolve(())
+				Thread.sleep(forTimeInterval: 0.3)
+				
+				guard !p.isCancelled else {
+					exps[0].fulfill()
+					return
 				}
-			}
-			.then {
-				XCTFail()
-			}
-			.finally {
-				expectations[1].fulfill()
-			}
-			.then {
+				
 				XCTFail()
 			}
 			.catch { error in
 				if case PromiseError.cancelled = error {
-					expectations[2].fulfill()
+					exps[1].fulfill()
 				}
 			}
 			
-			asyncAfter(0.4) {
+			asyncAfter {
 				p.cancel()
 			}
 		}
