@@ -551,11 +551,14 @@ final class CommonTests: XCTestCase {
 			.catch { error in
 				XCTAssert(error.localizedDescription == "Error")
 			}
-			.then { (value) -> Promise<Int> in
-				expectations[1].fulfill() // Must be skipped
-				return Promise.reject("Error")
+			.then { () -> Promise<Void> in
+				expectations[1].fulfill()
+				if expectations[1].isInverted == false {
+					throw "Error"
+				}
+				return Promise.resolve(())
 			}
-			.then { promise in
+			.then {
 				expectations[0].fulfill() // Must be skipped
 			}
 			.catch { error in
@@ -1213,9 +1216,14 @@ final class CommonTests: XCTestCase {
 	func test_Cancel() {
 		wait(count: 4) { expectations in
 			let p = Promise {
-				XCTFail()
+				Promise {
+					XCTFail()
+				}
 			}
 			.then {
+				XCTFail()
+			}
+			.then { _, resolve, reject in
 				XCTFail()
 			}
 			.then {

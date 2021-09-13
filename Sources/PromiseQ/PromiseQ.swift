@@ -37,12 +37,13 @@ private func pending<T>(monitor: Monitor, callback: @escaping (Result<T, Error>)
 	var p = true
 	let obj = NSObject()
 	return { [weak monitor] (result: Result<T, Error>) -> Void in
-		guard monitor != nil else { return }
-		synchronized(obj) {
-			guard p else { return }
-			p.toggle()
-			
-			callback(result)
+		if monitor != nil {
+			synchronized(obj) {
+				guard p else { return }
+				p.toggle()
+				
+				callback(result)
+			}
 		}
 	}
 }
