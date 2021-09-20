@@ -116,8 +116,11 @@ var GitHubHeaders: [String : String]? = {
 	return nil
 }()
 
-// Url with large data to fetch
-let url = "https://developer.apple.com/swift/blog/"
+// Path to load large data
+let PathToLoad = "https://developer.apple.com/swift/blog/"
+
+// Large data to upload
+let DataToUpload = Data(Array(repeating: UInt8(0), count: 5 * 1024 * 1024)) // 5MB
 
 final class CommonTests: XCTestCase {
 	
@@ -1294,7 +1297,6 @@ final class CommonTests: XCTestCase {
 	
 	func test_CancelAsync() {
 		wait(count: 2) { exps in
-		
 			let p = Promise.resolve(200)
 			
 			p.then {
@@ -1435,7 +1437,7 @@ final class CommonTests: XCTestCase {
 	
 	func test_AsyncableSuspendResume() {
 		wait(timeout: 10) { expectation in
-			let p = fetch(url)
+			let p = fetch(PathToLoad)
 			p.then { (data, resolve: @escaping (String)->Void, reject, task) in
 				task = TimeOutTask(timeOut: 1) { resolve("fired") }
 				task?.resume()
@@ -1488,8 +1490,8 @@ final class CommonTests: XCTestCase {
 	func test_AsyncableAll() {
 		wait(timeout: 10) { expectation in
 			let p = Promise.all (
-				fetch(url),
-				fetch(url)
+				fetch(PathToLoad),
+				fetch(PathToLoad)
 			)
 			.then { results in
 				XCTAssert(results.count > 0)
@@ -1957,8 +1959,7 @@ final class FetchTests: XCTestCase {
 	
 	func test_uploadData() {
 		wait(count:2, timeout: 3) { expectations in
-			let data = Data(Array(repeating: UInt8(0), count: 1024 * 1024)) // 1MB
-			upload(uploadURL, data: data) { task, sent, total in
+			upload(uploadURL, data: DataToUpload) { task, sent, total in
 				let percent = Double(sent) / Double(total)
 				if percent == 1.0 {
 					expectations[0].fulfill()
@@ -1992,8 +1993,7 @@ final class FetchTests: XCTestCase {
 				expectations[0].fulfill()
 			}
 				
-			let data = Data(Array(repeating: UInt8(0), count: 1024 * 1024)) // 1MB
-			try? data.write(to: url)
+			try? DataToUpload.write(to: url)
 			
 			// Upload file
 			upload(uploadURL, file: url) { task, sent, total in
@@ -2018,9 +2018,9 @@ final class FetchTests: XCTestCase {
 	
 	func test_uploadCancel() {
 		wait(timeout: 3) { expectation in
-			let data = Data(Array(repeating: UInt8(0), count: 1024 * 1024)) // 1MB
-			let promise = upload(uploadURL, data: data) { task, written, total  in
+			let promise = upload(uploadURL, data: DataToUpload) { task, written, total  in
 				let percent = Double(written) / Double(total)
+				print(percent)
 				if percent == 1.0 {
 					XCTFail()
 				}

@@ -137,6 +137,22 @@ private func retryAsync<T, U>(_ count: Int,
 /// - SeeAlso: `Promise.await()`.
 public typealias async = Promise
 
+/// Global functions that returns a result of the promise synchronously or throws an error.
+///
+/// It blocks the current execution queue and waits for a result or an error:
+///
+/// 	async {
+/// 	    let text = try `await` {
+/// 	        Promise { try String(contentsOfFile: "file.txt") }
+///		    }
+/// 	    print(text)
+/// 	}
+/// 	.catch { error in
+/// 	    print(error)
+/// 	}
+///
+///	- Returns: A result of the promise.
+/// - SeeAlso: `async`.
 @discardableResult
 public func await<T>(_ closure: () -> Promise<T>) throws -> T {
 	try closure().await()
@@ -732,6 +748,15 @@ public struct Promise<T> {
 		return result!
 	}
 	
+	
+	/// A Boolean value indicating whether the promise has been cancelled.
+	///
+	/// The default value of this property is `false`. Calling the `cancel()` method of this promise sets the value of this property to `true`.
+	///
+	/// 	let p = Promise.resolve(200)
+	/// 	p.cancel()
+	/// 	print(p.isCancelled) // true
+	///
 	public var isCancelled: Bool {
 		get {
 			monitor.cancelled
