@@ -365,10 +365,12 @@ func readFile(_ file: String) -> async<String> {
 }
 ```
 
-`await()` is a function that **synchronously** waits for a result of the promise or throws an error otherwise.
+`await()` is a function that waits **synchronously**  for a result of the promise or throws an error otherwise.
 
 ```swift
 let text = try readFile("file.txt").await()
+// OR
+let text = try `await` { readFile("file.txt") }
 ```
 
 To avoid blocking the current queue (such as main UI queue) we can pass `await()` inside the other promise (async block) and use `catch` to handle errors as usual:
@@ -419,7 +421,22 @@ promise.cancel()
 // Prints: The Promise cancelled.
 ```
 
-You can also break the promise chain for some conditions to call `cancel` inside a closure of any promise e.g.:
+Canceling an promise does not actively stop long term processing code from executing. You can check cancellation of your promise with `isCancelled` method and stop your code if the method returns `true`.
+
+```swift
+let promise = Promise { 10_000 }
+
+promise.then { count in
+    for i in 0..<count {
+        guard !promise.isCancelled else {
+            return
+        }
+        ...
+    }
+}
+```
+
+You can also break the promise chain for some conditions to call `cancel` inside any closure of your promise chanin e.g.:
 
 ```swift
 let promise = Promise {
@@ -711,7 +728,8 @@ Using `async/await`:
 
 ```swift
 async {
-    let response = try fetch("https://api.github.com/users").await()
+    let response = try `await` { fetch("https://api.github.com/users") }
+
     guard response.ok else {
         throw response.statusCodeDescription
     }
@@ -722,18 +740,18 @@ async {
 
     let users = try JSONDecoder().decode([User].self, from: data)
 
-    let images =
-        try async.all(
-            users
-            .map { $0.avatar_url }
-            .map { fetch($0) }
-        ).await()
-        .compactMap { $0.data }
-        .compactMap { UIImage(data: $0) }
+    let images = try `await` {
+        Promise.all(
+            users.map { fetch($0.avatar_url) }
+        )
+    }
+    .compactMap { $0.data }
+    .compactMap { UIImage(data: $0) }
 
-	async(.main) {
-		print(images.count)
-	}
+    // Switch to the main queue
+    async(.main) {
+        print(images.count)
+    }
 }
 .catch { error in
     print(error.localizedDescription)
